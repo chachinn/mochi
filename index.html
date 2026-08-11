@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#fff8f5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Mochi" />
+  <meta name="format-detection" content="telephone=no" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon/icon-192.png" sizes="192x192" />
+  <link rel="apple-touch-icon" href="icon/icon-192.png" />
+  <link rel="stylesheet" href="style.css" />
+  <title>Mochi — Collection Tracker</title>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <div>
+        <div class="brand-row">
+          <h1 class="brand">Mochi</h1>
+          <span class="dango" aria-hidden="true"><i></i><i></i><i></i></span>
+        </div>
+        <p id="greeting" class="greeting">your little collection keeper ♡</p>
+      </div>
+      <button id="openSearchBtn" class="icon-btn" type="button" aria-label="Search">⌕</button>
+    </header>
+
+    <main id="mainContent" class="main-content" aria-live="polite"></main>
+
+    <nav class="bottom-nav" aria-label="Main navigation">
+      <button class="nav-btn active" data-route="home" type="button"><span>⌂</span><small>Home</small></button>
+      <button class="nav-btn" data-route="collections" type="button"><span>▣</span><small>Collections</small></button>
+      <button id="quickAddBtn" class="nav-add" type="button" aria-label="Add item">＋</button>
+      <button class="nav-btn" data-route="wishlist" type="button"><span>♡</span><small>Wishlist</small></button>
+      <button class="nav-btn" data-route="me" type="button"><span>♙</span><small>Me</small></button>
+    </nav>
+  </div>
+
+  <div id="modalRoot"></div>
+  <div id="toastRoot" class="toast-root" aria-live="assertive"></div>
+  <input id="importInput" type="file" accept="application/json" hidden />
+
+  <script src="app.js" defer></script>
+</body>
+</html>
