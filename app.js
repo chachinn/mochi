@@ -128,3 +128,35 @@ function openGlobalSearch(){openModal(`${modalHead('Search Mochi')}<div class="s
 
 async function init(){try{await loadData();render();if('serviceWorker'in navigator)navigator.serviceWorker.register('./service-worker.js').catch(()=>{});$('.nav-btn[data-route="home"]').onclick=()=>setRoute('home');$$('.nav-btn').forEach(b=>b.onclick=()=>setRoute(b.dataset.route));$('#quickAddBtn').onclick=()=>openItemForm();$('#openSearchBtn').onclick=openGlobalSearch;$('#importInput').onchange=e=>{const f=e.target.files[0];if(f)importBackup(f);e.target.value=''};}catch(e){console.error(e);$('#mainContent').innerHTML='<div class="empty"><div class="empty-art">🍡</div><h3>Mochi had trouble opening</h3><p>Refresh the page. Your browser may have blocked local storage.</p></div>'}}
 document.addEventListener('DOMContentLoaded',init);
+
+
+// Prevent browser zoom gestures so the installed PWA feels like a native app.
+(function lockAppZoom() {
+  let lastTouchEnd = 0;
+
+  document.addEventListener('gesturestart', function (event) {
+    event.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('gesturechange', function (event) {
+    event.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('gestureend', function (event) {
+    event.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('touchend', function (event) {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) {
+      event.preventDefault();
+    }
+    lastTouchEnd = now;
+  }, { passive: false });
+
+  document.addEventListener('touchmove', function (event) {
+    if (event.touches && event.touches.length > 1) {
+      event.preventDefault();
+    }
+  }, { passive: false });
+})();

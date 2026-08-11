@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mochi-build2-v1';
+const CACHE_NAME = 'mochi-build2-v1-nozoom';
 const APP_SHELL = [
   './','./index.html','./style.css','./app.js','./manifest.json',
   './icon/icon-192.png','./icon/icon-512.png'
