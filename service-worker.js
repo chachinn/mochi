@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mochi-build3-v1';
+const CACHE_NAME = 'mochi-build4-v1';
 const APP_SHELL = [
   './','./index.html','./style.css','./app.js','./manifest.json',
   './icon/icon-192.png','./icon/icon-512.png'
@@ -6,7 +6,7 @@ const APP_SHELL = [
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
-  self.skipWaiting();
+  // Build 4 intentionally waits so the app can show a friendly update prompt.
 });
 
 self.addEventListener('activate', event => {
@@ -14,20 +14,29 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+
   if (event.request.mode === 'navigate') {
     event.respondWith(fetch(event.request).then(response => {
-      const copy = response.clone();
-      caches.open(CACHE_NAME).then(cache => cache.put('./index.html', copy));
+      if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put('./index.html', response.clone()));
       return response;
     }).catch(() => caches.match('./index.html')));
     return;
   }
-  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
-    if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
-    return response;
-  })));
+
+  // App assets: stale-while-revalidate for fast offline startup plus fresh files when online.
+  event.respondWith(caches.match(event.request).then(cached => {
+    const network = fetch(event.request).then(response => {
+      if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+      return response;
+    }).catch(() => cached);
+    return cached || network;
+  }));
 });

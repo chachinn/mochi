@@ -209,3 +209,192 @@ async function handleAction(action,el){if(action==='add-collection')openCollecti
 
 function exportJSON(){const data={app:'Mochi',version:3,exportedAt:new Date().toISOString(),collections:state.collections,items:state.items,settings:state.settings};downloadBlob(JSON.stringify(data,null,2),'mochi-backup.json','application/json')}
 async function init(){try{await loadData();applyTheme();render();if('serviceWorker'in navigator)navigator.serviceWorker.register('./service-worker.js').catch(()=>{});$$('.nav-btn').forEach(b=>b.onclick=()=>setRoute(b.dataset.route));$('#quickAddBtn').onclick=openQuickAdd;$('#openSearchBtn').onclick=openGlobalSearch;$('#importInput').onchange=e=>{const f=e.target.files[0];if(f)importBackup(f);e.target.value=''}}catch(e){console.error(e);$('#mainContent').innerHTML='<div class="empty"><div class="empty-art">🍡</div><h3>Mochi had trouble opening</h3><p>Refresh the page. Your browser may have blocked local storage.</p></div>'}}
+
+
+/* ========================================================================== */
+/* Mochi Build 4 — polish, reliability, backups, storage, CSV import & updates */
+/* ========================================================================== */
+const BUILD_NUMBER=4;
+const MAX_AUTO_BACKUPS=5;
+const b4Now=()=>new Date().toISOString();
+
+function b4Snapshot(label='Automatic backup'){
+  return {id:uid('backup'),label,createdAt:b4Now(),collections:structuredClone?structuredClone(state.collections):JSON.parse(JSON.stringify(state.collections)),items:structuredClone?structuredClone(state.items):JSON.parse(JSON.stringify(state.items)),settings:{...state.settings}};
+}
+async function saveAutoBackup(label='Automatic backup'){
+  try{
+    const current=Array.isArray(state.settings.autoBackups)?state.settings.autoBackups:[];
+    const clean=current.slice(0,MAX_AUTO_BACKUPS-1);
+    await saveSetting('autoBackups',[b4Snapshot(label),...clean]);
+  }catch(e){console.warn('Mochi backup snapshot skipped',e)}
+}
+async function restoreSnapshot(snapshot){
+  if(!snapshot||!Array.isArray(snapshot.collections)||!Array.isArray(snapshot.items))return showToast('That backup is incomplete.','error');
+  if(!confirm('Restore this Mochi snapshot? Your current data will be saved as a safety snapshot first.'))return;
+  await saveAutoBackup('Before snapshot restore');
+  await storeClear(STORES.collections);await storeClear(STORES.items);
+  for(const c of snapshot.collections)await storePut(STORES.collections,c);
+  for(const i of snapshot.items)await storePut(STORES.items,i);
+  const preservedBackups=state.settings.autoBackups||[];
+  for(const [key,value] of Object.entries(snapshot.settings||{}))if(key!=='autoBackups')await storePut(STORES.settings,{key,value});
+  await storePut(STORES.settings,{key:'autoBackups',value:preservedBackups});
+  await loadData();closeModal();render();showToast('Snapshot restored ♡','success');
+}
+function showUndoToast(message,undo){
+  const el=document.createElement('div');el.className='toast success undo-toast';
+  const text=document.createElement('span');text.textContent=message;
+  const btn=document.createElement('button');btn.type='button';btn.textContent='Undo';
+  let done=false;btn.onclick=async()=>{if(done)return;done=true;try{await undo();el.remove()}catch(e){console.error(e);showToast('Could not undo that action.','error')}};
+  el.append(text,btn);$('#toastRoot').appendChild(el);setTimeout(()=>{done=true;el.remove()},6500);
+}
+
+function validMochiBackup(data){
+  if(!data||typeof data!=='object'||!Array.isArray(data.collections)||!Array.isArray(data.items))return {ok:false,reason:'Missing collections or items.'};
+  const badCollection=data.collections.find(c=>!c||typeof c!=='object'||!c.id||!c.name);
+  const badItem=data.items.find(i=>!i||typeof i!=='object'||!i.id||!i.name||!i.collectionId);
+  if(badCollection)return {ok:false,reason:'One collection is missing an ID or name.'};
+  if(badItem)return {ok:false,reason:'One item is missing an ID, name, or collection.'};
+  const collectionIds=new Set(data.collections.map(c=>c.id));
+  const orphanCount=data.items.filter(i=>!collectionIds.has(i.collectionId)).length;
+  return {ok:true,orphanCount};
+}
+
+// Safer JSON import: validate first and create a rollback snapshot before replacing anything.
+importBackup=async function(file){
+  try{
+    if(file.size>25*1024*1024)throw new Error('Backup is larger than 25 MB.');
+    const data=JSON.parse(await file.text()),check=validMochiBackup(data);
+    if(!check.ok)throw new Error(check.reason);
+    const warning=check.orphanCount?`\n\nNote: ${check.orphanCount} item(s) reference collections that are not included in the backup.`:'';
+    if(!confirm(`Validated Mochi backup: ${data.collections.length} collections and ${data.items.length} items.${warning}\n\nImporting will replace the current data on this device. Continue?`))return;
+    await saveAutoBackup('Before JSON import');
+    await storeClear(STORES.collections);await storeClear(STORES.items);
+    for(const c of data.collections)await storePut(STORES.collections,c);
+    for(const i of data.items)await storePut(STORES.items,i);
+    for(const [key,value] of Object.entries(data.settings||{}))if(key!=='autoBackups')await storePut(STORES.settings,{key,value});
+    await loadData();applyTheme();render();showToast('Mochi backup restored ♡','success');
+  }catch(e){console.error(e);showToast(`Could not import: ${e.message||'invalid Mochi backup'}`,'error')}
+};
+
+function parseCSV(text){
+  const rows=[];let row=[],cell='',quoted=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i],next=text[i+1];
+    if(ch==='"'&&quoted&&next==='"'){cell+='"';i++;continue}
+    if(ch==='"'){quoted=!quoted;continue}
+    if(ch===','&&!quoted){row.push(cell);cell='';continue}
+    if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&next==='\n')i++;row.push(cell);cell='';if(row.some(v=>v.trim()!==''))rows.push(row);row=[];continue}
+    cell+=ch;
+  }
+  row.push(cell);if(row.some(v=>v.trim()!==''))rows.push(row);return rows;
+}
+async function importCSV(file){
+  try{
+    if(file.size>10*1024*1024)throw new Error('CSV is larger than 10 MB.');
+    const rows=parseCSV(await file.text());if(rows.length<2)throw new Error('CSV has no item rows.');
+    const headers=rows.shift().map(h=>h.trim().toLowerCase());
+    const find=(...names)=>names.map(n=>headers.indexOf(n.toLowerCase())).find(i=>i>=0)??-1;
+    const idx={name:find('name','item','item name'),collection:find('collection','collection name'),status:find('status'),qty:find('quantity','qty'),series:find('series','franchise'),character:find('character','subject'),price:find('price paid','price'),value:find('estimated value','value'),target:find('target price'),date:find('date acquired','date'),store:find('store','source'),condition:find('condition'),priority:find('priority'),tags:find('tags'),slot:find('set slot'),mystery:find('mystery series'),notes:find('notes')};
+    if(idx.name<0||idx.collection<0)throw new Error('CSV needs at least Name and Collection columns.');
+    const records=rows.filter(r=>String(r[idx.name]||'').trim()).map(r=>({r,name:String(r[idx.name]||'').trim(),collectionName:String(r[idx.collection]||'').trim()}));
+    if(!records.length)throw new Error('No valid item names found.');
+    if(!confirm(`Import ${records.length} item(s) from CSV? Existing Mochi data will be kept.`))return;
+    await saveAutoBackup('Before CSV import');
+    let added=0;
+    for(const x of records){
+      let c=state.collections.find(c=>c.name.toLowerCase()===x.collectionName.toLowerCase());
+      if(!c){c={id:uid('col'),name:x.collectionName||'Imported',emoji:'🍡',description:'Imported from CSV',template:'general',color:COLORS[0],cover:'',setTotal:'',setMembers:[],customFieldLabels:[],parentId:'',order:state.collections.length,createdAt:b4Now(),updatedAt:b4Now(),archived:false};await storePut(STORES.collections,c);state.collections.push(c)}
+      const r=x.r,get=i=>i>=0?String(r[i]??'').trim():'';
+      const item={id:uid('item'),name:x.name,collectionId:c.id,status:STATUS.includes(get(idx.status))?get(idx.status):'Owned',quantity:Math.max(1,Number(get(idx.qty)||1)),series:get(idx.series),character:get(idx.character),pricePaid:get(idx.price),estimatedValue:get(idx.value),targetPrice:get(idx.target),dateAcquired:get(idx.date),store:get(idx.store),condition:get(idx.condition),priority:PRIORITIES.includes(get(idx.priority))?get(idx.priority):'Medium',tags:get(idx.tags).split(/[|,]/).map(v=>v.trim()).filter(Boolean),setSlot:get(idx.slot),mysterySeries:get(idx.mystery),notes:get(idx.notes),photos:[],coverPhotoIndex:0,customFields:{},favorite:false,archived:false,createdAt:b4Now(),updatedAt:b4Now()};
+      await storePut(STORES.items,item);added++;
+    }
+    await loadData();render();showToast(`${added} CSV item${added===1?'':'s'} imported ♡`,'success');
+  }catch(e){console.error(e);showToast(`CSV import failed: ${e.message}`,'error')}
+}
+
+function dataUrlBytes(s=''){if(typeof s!=='string'||!s.startsWith('data:'))return 0;const comma=s.indexOf(',');return comma<0?0:Math.floor((s.length-comma-1)*.75)}
+function localPhotoBytes(){return state.items.reduce((a,i)=>a+(i.photos||[]).reduce((b,p)=>b+dataUrlBytes(p),0)+dataUrlBytes(i.photo),0)+state.collections.reduce((a,c)=>a+dataUrlBytes(c.cover),0)}
+function formatBytes(n){if(!Number.isFinite(n)||n<=0)return '0 KB';const u=['B','KB','MB','GB'];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++}return `${n.toFixed(i?1:0)} ${u[i]}`}
+async function openStorageManager(){
+  let estimate={usage:0,quota:0};try{if(navigator.storage?.estimate)estimate=await navigator.storage.estimate()}catch{}
+  const photos=localPhotoBytes(),pct=estimate.quota?Math.min(100,(estimate.usage/estimate.quota)*100):0;
+  openModal(`${modalHead('Storage Manager')}<section class="panel"><div class="row-between"><div><b>Browser storage</b><div class="tiny muted">Approximate space used by Mochi and other site data.</div></div><span class="status-pill">${formatBytes(estimate.usage)}</span></div><div class="storage-meter"><i style="width:${pct}%"></i></div><div class="tiny muted">${estimate.quota?`${pct.toFixed(1)}% of ${formatBytes(estimate.quota)} browser quota`:'Storage quota unavailable on this browser.'}</div></section><section class="panel" style="margin-top:10px"><h3>Photo footprint</h3><div class="stats-list"><div class="stats-chip"><b>${formatBytes(photos)}</b><span>embedded photos</span></div><div class="stats-chip"><b>${state.items.length}</b><span>item entries</span></div><div class="stats-chip"><b>${state.collections.length}</b><span>collections</span></div></div><p class="validation-note">Build 4 compresses newly selected images before saving. Photos already in your library are left untouched so image quality is never reduced without you choosing it.</p></section><button id="downloadSafetyBackup" class="soft-btn primary" style="width:100%;margin-top:10px">Download safety backup</button>`);
+  $('#downloadSafetyBackup').onclick=exportJSON;
+}
+function openBackupManager(){
+  const backups=Array.isArray(state.settings.autoBackups)?state.settings.autoBackups:[];
+  openModal(`${modalHead('Backup & Recovery')}<div class="panel"><div class="row-between"><div><b>Automatic safety snapshots</b><div class="tiny muted">Mochi keeps up to ${MAX_AUTO_BACKUPS} local snapshots before risky changes.</div></div><button id="makeSnapshot" class="soft-btn">Save now</button></div>${backups.length?backups.map((b,i)=>`<div class="backup-row"><div><b>${esc(b.label||'Snapshot')}</b><small>${new Date(b.createdAt).toLocaleString()}</small></div><button class="soft-btn" data-restore-backup="${i}">Restore</button></div>`).join(''):'<div class="empty"><p>No safety snapshots yet.</p></div>'}</div><div class="tool-grid" style="margin-top:10px"><button class="tool-card" data-action="export-json"><strong>↓ Export JSON</strong><small>Portable full Mochi backup.</small></button><button class="tool-card" data-action="import-json"><strong>↑ Import JSON</strong><small>Validated before anything is replaced.</small></button></div>`);
+  $('#makeSnapshot').onclick=async()=>{await saveAutoBackup('Manual snapshot');closeModal();showToast('Safety snapshot saved ♡','success')};
+  $$('[data-restore-backup]').forEach(btn=>btn.onclick=()=>restoreSnapshot(backups[Number(btn.dataset.restoreBackup)]));bindDynamicEvents();
+}
+function openAppHealth(){
+  const orphanItems=state.items.filter(i=>!collectionFor(i.collectionId));
+  const duplicateIds=state.items.length-new Set(state.items.map(i=>i.id)).size;
+  const issues=orphanItems.length+duplicateIds;
+  openModal(`${modalHead('App Health Check')}<section class="panel"><div class="dash-title" style="font-size:22px">${issues?'Needs a little cleanup':'Everything looks good ♡'}</div><div class="stats-list"><div class="stats-chip"><b>${orphanItems.length}</b><span>orphan items</span></div><div class="stats-chip"><b>${duplicateIds}</b><span>duplicate IDs</span></div><div class="stats-chip"><b>${navigator.onLine?'Online':'Offline'}</b><span>connection</span></div></div><p class="validation-note">Mochi checks structural data only. It never uploads your collection during this check.</p></section>${orphanItems.length?`<section class="panel" style="margin-top:10px"><h3>Orphan items</h3><p class="tiny muted">These entries point to a collection that no longer exists. Export a backup before repairing them.</p>${orphanItems.slice(0,12).map(i=>`<div class="backup-row"><div><b>${esc(i.name)}</b><small>${esc(i.collectionId)}</small></div></div>`).join('')}</section>`:''}`)
+}
+
+// Build 4 extends Me without removing Build 3 features.
+const renderMeBuild3=renderMe;
+renderMe=function(){return `${renderMeBuild3()}<section class="section"><div class="section-head"><h2 class="section-title">App Care</h2><span class="status-pill"><i class="status-dot ${navigator.onLine?'':'offline'}"></i>${navigator.onLine?'online':'offline'}</span></div><div class="build4-grid"><button class="build4-card" data-action="backup-manager"><span>🛟</span><b>Backup & Recovery</b><small>Safety snapshots and validated restores.</small></button><button class="build4-card" data-action="storage-manager"><span>🗃️</span><b>Storage Manager</b><small>See photo and browser storage usage.</small></button><button class="build4-card" data-action="import-csv"><span>📄</span><b>Import CSV</b><small>Bring a spreadsheet collection into Mochi.</small></button><button class="build4-card" data-action="app-health"><span>🩺</span><b>App Health</b><small>Check local data structure and offline status.</small></button></div></section>`};
+
+const handleActionBuild3=handleAction;
+handleAction=async function(action,el){
+  if(action==='backup-manager')return openBackupManager();
+  if(action==='storage-manager')return openStorageManager();
+  if(action==='import-csv')return $('#csvImportInput')?.click();
+  if(action==='app-health')return openAppHealth();
+  if(action==='about-build')return showToast('Mochi Build 4 • polished local-first PWA ♡','success');
+  return handleActionBuild3(action,el);
+};
+
+// Intercept destructive buttons before Build 3 permanent-delete handlers fire.
+document.addEventListener('click',async e=>{
+  const itemDelete=e.target.closest?.('#deleteItem');
+  if(itemDelete){
+    e.preventDefault();e.stopImmediatePropagation();
+    const title=$('.modal-title')?.textContent||'';
+    const item=state.items.find(i=>i.name===title)||state.items.find(i=>i.id===itemDelete.dataset.item);
+    if(!item||!confirm(`Delete ${item.name}? You can undo for a few seconds.`))return;
+    await saveAutoBackup('Before item delete');const snapshot=JSON.parse(JSON.stringify(item));
+    await storeDelete(STORES.items,item.id);await loadData();closeModal();render();
+    showUndoToast('Item deleted',async()=>{await storePut(STORES.items,snapshot);await loadData();render();showToast('Item restored ♡','success')});return;
+  }
+  const collectionDelete=e.target.closest?.('#deleteCollection');
+  if(collectionDelete){
+    e.preventDefault();e.stopImmediatePropagation();
+    const c=collectionFor(state.collectionId);if(!c)return;
+    const childIds=new Set([c.id,...childrenOf(c.id).map(x=>x.id)]),colSnaps=state.collections.filter(x=>childIds.has(x.id)).map(x=>JSON.parse(JSON.stringify(x))),itemSnaps=state.items.filter(i=>childIds.has(i.collectionId)).map(x=>JSON.parse(JSON.stringify(x)));
+    if(!confirm(`Delete ${c.name}${itemSnaps.length?` and ${itemSnaps.length} item entr${itemSnaps.length===1?'y':'ies'}`:''}? You can undo for a few seconds.`))return;
+    await saveAutoBackup('Before collection delete');
+    for(const i of itemSnaps)await storeDelete(STORES.items,i.id);for(const x of colSnaps)await storeDelete(STORES.collections,x.id);
+    await loadData();closeModal();setRoute('collections');
+    showUndoToast('Collection deleted',async()=>{for(const x of colSnaps)await storePut(STORES.collections,x);for(const i of itemSnaps)await storePut(STORES.items,i);await loadData();render();showToast('Collection restored ♡','success')});
+  }
+},true);
+
+function setupPWAUpdates(){
+  if(!('serviceWorker'in navigator))return;
+  let refreshing=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(refreshing)return;refreshing=true;location.reload()});
+  navigator.serviceWorker.ready.then(reg=>{
+    const show=worker=>{const banner=$('#updateBanner');if(!banner||!worker)return;banner.classList.remove('hidden');$('#applyUpdateBtn').onclick=()=>worker.postMessage({type:'SKIP_WAITING'})};
+    if(reg.waiting)show(reg.waiting);
+    reg.addEventListener('updatefound',()=>{const worker=reg.installing;if(!worker)return;worker.addEventListener('statechange',()=>{if(worker.state==='installed'&&navigator.serviceWorker.controller)show(worker)})});
+    reg.update().catch(()=>{});
+  }).catch(()=>{});
+}
+function setupConnectionState(){window.addEventListener('online',()=>{if(state.route==='me')render();showToast('Back online ♡','success')});window.addEventListener('offline',()=>{if(state.route==='me')render();showToast('Mochi is offline — your local collection still works.','success')})}
+function setupFormQuality(){document.addEventListener('invalid',e=>{e.target.classList.add('field-invalid')},true);document.addEventListener('input',e=>e.target?.classList?.remove('field-invalid'),true)}
+
+// Compress new images a little more efficiently while keeping existing photos untouched.
+imageToDataURL=function(file,max=1280,quality=.78){return new Promise((resolve,reject)=>{if(!file?.type?.startsWith('image/'))return reject(new Error('Please choose an image file.'));const reader=new FileReader();reader.onload=()=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;if(Math.max(w,h)>max){const r=max/Math.max(w,h);w=Math.round(w*r);h=Math.round(h*r)}const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d',{alpha:false});ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);resolve(canvas.toDataURL('image/jpeg',quality))};img.onerror=reject;img.src=reader.result};reader.onerror=reject;reader.readAsDataURL(file)})};
+
+// Export metadata identifies Build 4 while retaining the same compatible data model.
+exportJSON=function(){const data={app:'Mochi',version:4,dataModel:1,exportedAt:b4Now(),collections:state.collections,items:state.items,settings:state.settings};downloadBlob(JSON.stringify(data,null,2),'mochi-backup.json','application/json')};
+
+document.addEventListener('DOMContentLoaded',()=>{
+  const csv=$('#csvImportInput');if(csv)csv.onchange=e=>{const f=e.target.files[0];if(f)importCSV(f);e.target.value=''};
+  setupPWAUpdates();setupConnectionState();setupFormQuality();
+  // One lightweight daily snapshot; avoids cloning the database on every small edit.
+  setTimeout(async()=>{const day=todayISO();if(state.settings.lastAutoBackupDay!==day){await saveAutoBackup('Daily automatic snapshot');await saveSetting('lastAutoBackupDay',day)}},1200);
+});
