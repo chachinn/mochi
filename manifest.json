@@ -1,7 +1,7 @@
 {
   "name": "Mochi — Collection Tracker",
   "short_name": "Mochi",
-  "description": "A cute offline-first personal collection tracker.",
+  "description": "A cute offline-first tracker for collections, sets, wishlists, blind boxes and collecting memories.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

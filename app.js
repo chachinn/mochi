@@ -1,409 +1,130 @@
-/* Mochi Build 1 — offline-first vanilla PWA */
+/* Mochi Build 2 — local-first collection tracker */
 'use strict';
 
-const DB_NAME = 'mochi-db';
-const DB_VERSION = 1;
-const STORES = { collections: 'collections', items: 'items', settings: 'settings' };
-const STATUS = ['Owned', 'Ordered', 'Wishlist', 'Sold'];
-const PRIORITIES = ['High', 'Medium', 'Low'];
-const EMOJIS = ['🍡','🧸','🎴','📚','🎮','🌸','✨','🧁','🎀','🪄','💿','🧸','🃏','🛍️','🎁','🧋'];
-
-const state = {
-  route: 'home',
-  collections: [],
-  items: [],
-  settings: { displayName: '', monthlyBudget: 0, currency: '₱', huntMode: false },
-  collectionId: null,
-  query: '',
-  filterStatus: 'All',
-  sort: 'newest'
+const DB_NAME='mochi-db';
+const DB_VERSION=1;
+const STORES={collections:'collections',items:'items',settings:'settings'};
+const STATUS=['Owned','Ordered','Wishlist','Sold'];
+const PRIORITIES=['High','Medium','Low'];
+const VIEWS=['grid','list','shelf'];
+const COLORS=['#ffe6e9','#eef5df','#fff0cf','#ece9fb','#e7f2f6','#f7e7d8','#f5e9ef','#e8f0ea'];
+const TEMPLATES={
+  general:{label:'General',emoji:'🍡',fields:['Brand','Variant']},
+  figures:{label:'Figures',emoji:'✨',fields:['Manufacturer','Scale','Release']},
+  photocards:{label:'Photocards',emoji:'🎴',fields:['Artist','Member','Album','Era','Version','Official']},
+  books:{label:'Books / Manga',emoji:'📚',fields:['Author','Volume','Edition','Publisher']},
+  plushies:{label:'Plushies',emoji:'🧸',fields:['Brand','Size','Material']},
+  games:{label:'Games',emoji:'🎮',fields:['Platform','Region','Edition']},
+  albums:{label:'Albums',emoji:'💿',fields:['Artist','Album','Version']},
+  blindboxes:{label:'Blind Boxes',emoji:'🎁',fields:['Series','Wave','Rarity']},
+  beauty:{label:'Beauty',emoji:'💄',fields:['Brand','Shade','Size']},
+  fashion:{label:'Fashion',emoji:'👜',fields:['Brand','Size','Color']},
+  tickets:{label:'Tickets',emoji:'🎟️',fields:['Event','Venue','Seat']},
+  custom:{label:'Custom',emoji:'🌸',fields:[]}
 };
 
-const $ = (sel, root=document) => root.querySelector(sel);
-const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
-const money = n => `${state.settings.currency || '₱'}${Number(n || 0).toLocaleString(undefined,{maximumFractionDigits:2})}`;
-const esc = (s='') => String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-const uid = prefix => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
-const fmtDate = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}) : '—';
-const todayISO = () => new Date().toISOString().slice(0,10);
+const state={route:'home',collections:[],items:[],settings:{displayName:'',monthlyBudget:0,currency:'₱',huntMode:false,defaultView:'grid'},collectionId:null,query:'',filterStatus:'All',sort:'newest',view:'grid'};
+const $=(s,r=document)=>r.querySelector(s); const $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=(s='')=>String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const uid=p=>`${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
+const todayISO=()=>new Date().toISOString().slice(0,10);
+const money=n=>`${state.settings.currency||'₱'}${Number(n||0).toLocaleString(undefined,{maximumFractionDigits:2})}`;
+const fmtDate=v=>v?new Date(`${v}T00:00:00`).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'—';
+const coverOf=i=>(i.photos&&i.photos.length?i.photos[i.coverPhotoIndex||0]:i.photo)||'';
+const qty=i=>Math.max(1,Number(i.quantity||1));
 
-function openDB(){
-  return new Promise((resolve,reject)=>{
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = e => {
-      const db = e.target.result;
-      if(!db.objectStoreNames.contains(STORES.collections)) db.createObjectStore(STORES.collections,{keyPath:'id'});
-      if(!db.objectStoreNames.contains(STORES.items)) db.createObjectStore(STORES.items,{keyPath:'id'});
-      if(!db.objectStoreNames.contains(STORES.settings)) db.createObjectStore(STORES.settings,{keyPath:'key'});
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
+function openDB(){return new Promise((resolve,reject)=>{const req=indexedDB.open(DB_NAME,DB_VERSION);req.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains(STORES.collections))db.createObjectStore(STORES.collections,{keyPath:'id'});if(!db.objectStoreNames.contains(STORES.items))db.createObjectStore(STORES.items,{keyPath:'id'});if(!db.objectStoreNames.contains(STORES.settings))db.createObjectStore(STORES.settings,{keyPath:'key'});};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});}
+async function storeGetAll(name){const db=await openDB();return new Promise((resolve,reject)=>{const req=db.transaction(name,'readonly').objectStore(name).getAll();req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error);});}
+async function storePut(name,value){const db=await openDB();return new Promise((resolve,reject)=>{const req=db.transaction(name,'readwrite').objectStore(name).put(value);req.onsuccess=()=>resolve(value);req.onerror=()=>reject(req.error);});}
+async function storeDelete(name,key){const db=await openDB();return new Promise((resolve,reject)=>{const req=db.transaction(name,'readwrite').objectStore(name).delete(key);req.onsuccess=resolve;req.onerror=()=>reject(req.error);});}
+async function storeClear(name){const db=await openDB();return new Promise((resolve,reject)=>{const req=db.transaction(name,'readwrite').objectStore(name).clear();req.onsuccess=resolve;req.onerror=()=>reject(req.error);});}
+async function saveSetting(key,value){state.settings[key]=value;await storePut(STORES.settings,{key,value});}
+async function loadData(){state.collections=(await storeGetAll(STORES.collections)).filter(x=>!x.archived).sort((a,b)=>(a.order||0)-(b.order||0));state.items=(await storeGetAll(STORES.items)).filter(x=>!x.archived);(await storeGetAll(STORES.settings)).forEach(r=>state.settings[r.key]=r.value);state.view=state.settings.defaultView||state.view||'grid';}
 
-async function storeGetAll(name){
-  const db = await openDB();
-  return new Promise((resolve,reject)=>{
-    const req = db.transaction(name,'readonly').objectStore(name).getAll();
-    req.onsuccess=()=>resolve(req.result||[]); req.onerror=()=>reject(req.error);
-  });
-}
-async function storePut(name,value){
-  const db = await openDB();
-  return new Promise((resolve,reject)=>{
-    const req=db.transaction(name,'readwrite').objectStore(name).put(value);
-    req.onsuccess=()=>resolve(value); req.onerror=()=>reject(req.error);
-  });
-}
-async function storeDelete(name,key){
-  const db = await openDB();
-  return new Promise((resolve,reject)=>{
-    const req=db.transaction(name,'readwrite').objectStore(name).delete(key);
-    req.onsuccess=()=>resolve(); req.onerror=()=>reject(req.error);
-  });
-}
-async function storeClear(name){
-  const db=await openDB();
-  return new Promise((resolve,reject)=>{ const req=db.transaction(name,'readwrite').objectStore(name).clear(); req.onsuccess=resolve; req.onerror=()=>reject(req.error); });
-}
+function collectionFor(id){return state.collections.find(c=>c.id===id)}
+function itemsForCollection(id){return state.items.filter(i=>i.collectionId===id)}
+function activeCount(id){return itemsForCollection(id).filter(i=>i.status!=='Sold').reduce((a,i)=>a+qty(i),0)}
+function ownedItems(){return state.items.filter(i=>i.status==='Owned')}
+function wishlistItems(){return state.items.filter(i=>i.status==='Wishlist'||i.status==='Ordered')}
+function totalUnits(items=state.items){return items.reduce((a,i)=>a+qty(i),0)}
+function totalSpent(items=state.items){return items.filter(i=>i.status==='Owned'||i.status==='Sold').reduce((a,i)=>a+Number(i.pricePaid||0)*qty(i),0)}
+function monthSpent(){const m=new Date().toISOString().slice(0,7);return state.items.filter(i=>(i.dateAcquired||'').startsWith(m)).reduce((a,i)=>a+Number(i.pricePaid||0)*qty(i),0)}
+function tagsOf(i){return Array.isArray(i.tags)?i.tags:String(i.tags||'').split(',').map(x=>x.trim()).filter(Boolean)}
+function duplicateMatches(item,excludeId=''){const key=String(item.name||'').trim().toLowerCase();return state.items.filter(x=>x.id!==excludeId&&x.collectionId===item.collectionId&&String(x.name||'').trim().toLowerCase()===key)}
+function childrenOf(id){return state.collections.filter(c=>c.parentId===id)}
 
-async function loadData(){
-  state.collections = (await storeGetAll(STORES.collections)).filter(x=>!x.archived).sort((a,b)=>(a.order||0)-(b.order||0));
-  state.items = (await storeGetAll(STORES.items)).filter(x=>!x.archived);
-  const settingsRows = await storeGetAll(STORES.settings);
-  settingsRows.forEach(r => state.settings[r.key]=r.value);
-}
-async function saveSetting(key,value){ state.settings[key]=value; await storePut(STORES.settings,{key,value}); }
+function updateGreeting(){const h=new Date().getHours(),p=h<12?'good morning':h<18?'good afternoon':'good evening';$('#greeting').textContent=state.settings.displayName?`${p}, ${state.settings.displayName} ♡`:`${p} ♡`;}
+function setRoute(route,extra={}){state.route=route;if(extra.collectionId!==undefined)state.collectionId=extra.collectionId;$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.route===route||(route==='collection'&&b.dataset.route==='collections')));window.scrollTo({top:0,behavior:'instant'});render();}
+function render(){updateGreeting();const root=$('#mainContent');if(state.route==='home')root.innerHTML=renderHome();else if(state.route==='collections')root.innerHTML=renderCollections();else if(state.route==='collection')root.innerHTML=renderCollection();else if(state.route==='wishlist')root.innerHTML=renderWishlist();else if(state.route==='me')root.innerHTML=renderMe();else root.innerHTML=renderHome();bindDynamicEvents();}
 
-function collectionFor(id){ return state.collections.find(c=>c.id===id); }
-function itemsForCollection(id){ return state.items.filter(i=>i.collectionId===id); }
-function collectionCount(id){ return itemsForCollection(id).filter(i=>i.status!=='Sold').length; }
-function ownedItems(){ return state.items.filter(i=>i.status==='Owned'); }
-function wishlistItems(){ return state.items.filter(i=>i.status==='Wishlist'||i.status==='Ordered'); }
-function totalSpent(items=state.items){ return items.filter(i=>i.status==='Owned'||i.status==='Sold').reduce((a,i)=>a+Number(i.pricePaid||0),0); }
-function monthSpent(){ const m=new Date().toISOString().slice(0,7); return state.items.filter(i=>(i.dateAcquired||'').startsWith(m)).reduce((a,i)=>a+Number(i.pricePaid||0),0); }
+function renderHome(){const recent=[...state.items].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).slice(0,10);const hunted=state.items.filter(i=>i.status==='Wishlist').slice(0,8);const units=ownedItems().reduce((a,i)=>a+qty(i),0);return `
+<section class="stat-grid"><div class="stat-card"><div class="stat-icon">🎁</div><div><div class="stat-number">${units}</div><div class="stat-label">items</div></div></div><div class="stat-card"><div class="stat-icon">▣</div><div><div class="stat-number">${state.collections.length}</div><div class="stat-label">collections</div></div></div></section>
+<section class="section"><div class="section-head"><h2 class="section-title">My Shelf</h2><button class="link-btn" data-route-link="collections">view all</button></div>${state.items.length?renderShelf(recent):emptyBlock('🍡','Your shelf is waiting','Add your first collectible and Mochi will start building your little digital shelf.','+ Add first item','add-item')}</section>
+<section class="section"><div class="section-head"><h2 class="section-title">My Collections</h2><button class="link-btn" data-action="add-collection">+ add</button></div>${state.collections.length?`<div class="collection-grid">${state.collections.filter(c=>!c.parentId).slice(0,6).map(renderCollectionCard).join('')}</div>`:emptyBlock('🧺','No collections yet','Create a collection from a template or make your own.','Create collection','add-collection')}</section>
+<section class="section"><div class="section-head"><h2 class="section-title">Currently Hunting 👀</h2><button class="link-btn" data-route-link="wishlist">view all</button></div><div class="h-scroll">${hunted.length?hunted.map(renderMiniItem).join(''):`<button class="item-mini" data-action="add-wishlist" style="border:0;background:transparent;text-align:left"><div class="item-mini-empty">＋</div><div class="item-mini-name">Add wishlist item</div><div class="item-mini-sub">start your hunt</div></button>`}</div></section>${budgetPanel()}`;}
 
-function updateGreeting(){
-  const h=new Date().getHours();
-  const period=h<12?'good morning':h<18?'good afternoon':'good evening';
-  $('#greeting').textContent = state.settings.displayName ? `${period}, ${state.settings.displayName} ♡` : `${period} ♡`;
-}
+function renderShelf(items){const chunks=[];for(let i=0;i<items.length;i+=4)chunks.push(items.slice(i,i+4));return `<div class="shelf-view">${chunks.map(ch=>`<div class="shelf-row"><div class="shelf-items">${ch.map(i=>`<button class="shelf-item" data-item-id="${i.id}">${coverOf(i)?`<img src="${coverOf(i)}" alt="${esc(i.name)}">`:`<div class="shelf-placeholder">${esc(collectionFor(i.collectionId)?.emoji||'🍡')}</div>`}<div class="shelf-label">${esc(i.name)}</div></button>`).join('')}</div></div>`).join('')}</div>`;}
+function renderCollectionCard(c){const color=c.color||COLORS[(state.collections.indexOf(c))%COLORS.length];return `<button class="collection-card" data-collection-id="${c.id}" style="background:${color}">${c.cover?`<img class="collection-cover-mini" src="${c.cover}" alt="">`:''}<span class="collection-emoji">${esc(c.emoji||TEMPLATES[c.template]?.emoji||'🍡')}</span><span><span class="collection-card-name">${esc(c.name)}</span><span class="collection-card-count">${activeCount(c.id)} items${childrenOf(c.id).length?` · ${childrenOf(c.id).length} subcollections`:''}</span></span><span class="collection-arrow">›</span></button>`;}
+function renderMiniItem(i){return `<button class="item-mini" data-item-id="${i.id}" style="border:0;background:transparent;text-align:left;padding:0"><span class="heart-dot">♡</span>${coverOf(i)?`<img src="${coverOf(i)}" alt="${esc(i.name)}">`:`<div class="item-mini-empty">${esc(collectionFor(i.collectionId)?.emoji||'🍡')}</div>`}<div class="item-mini-name">${esc(i.name)}</div><div class="item-mini-sub">${money(i.targetPrice||i.pricePaid||0)}</div></button>`;}
+function emptyBlock(emoji,title,text,button,action){return `<div class="empty"><div class="empty-art">${emoji}</div><h3>${title}</h3><p>${text}</p><button class="soft-btn primary" data-action="${action}">${button}</button></div>`;}
 
-function setRoute(route, extra={}){
-  state.route=route;
-  if(extra.collectionId !== undefined) state.collectionId=extra.collectionId;
-  $$('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.route===route || (route==='collection'&&b.dataset.route==='collections')));
-  window.scrollTo({top:0,behavior:'instant'});
-  render();
-}
+function renderCollections(){let cols=state.collections.filter(c=>!c.parentId);if(state.query)cols=cols.filter(c=>(c.name+' '+(c.description||'')).toLowerCase().includes(state.query.toLowerCase()));return `<div class="page-title-row"><h2 class="page-title">Collections</h2><button class="soft-btn primary" data-action="add-collection">+ New</button></div><div class="toolbar"><div class="searchbar"><span>⌕</span><input id="collectionSearch" placeholder="Search collections" value="${esc(state.query)}"></div></div>${cols.length?`<div class="collection-grid">${cols.map(renderCollectionCard).join('')}</div>`:emptyBlock('🧺','Nothing here yet','Create a collection for figures, photocards, books, plushies, blind boxes, or anything else.','Create collection','add-collection')}`;}
 
-function render(){
-  updateGreeting();
-  const root=$('#mainContent');
-  if(state.route==='home') root.innerHTML=renderHome();
-  else if(state.route==='collections') root.innerHTML=renderCollections();
-  else if(state.route==='collection') root.innerHTML=renderCollectionDetail();
-  else if(state.route==='wishlist') root.innerHTML=renderWishlist();
-  else if(state.route==='me') root.innerHTML=renderMe();
-  else root.innerHTML=renderHome();
-  bindDynamicEvents();
-}
+function filterAndSort(items){let arr=[...items];if(state.query){const q=state.query.toLowerCase();arr=arr.filter(i=>[i.name,i.series,i.character,i.store,i.notes,tagsOf(i).join(' '),...Object.values(i.customFields||{})].join(' ').toLowerCase().includes(q));}if(state.filterStatus!=='All')arr=arr.filter(i=>i.status===state.filterStatus);if(state.sort==='oldest')arr.sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));else if(state.sort==='name')arr.sort((a,b)=>String(a.name).localeCompare(String(b.name)));else if(state.sort==='priceHigh')arr.sort((a,b)=>Number(b.pricePaid||b.targetPrice||0)-Number(a.pricePaid||a.targetPrice||0));else if(state.sort==='priceLow')arr.sort((a,b)=>Number(a.pricePaid||a.targetPrice||0)-Number(b.pricePaid||b.targetPrice||0));else arr.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));return arr;}
 
-function renderHome(){
-  const owned=ownedItems();
-  const recent=[...state.items].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).slice(0,10);
-  const hunted=state.items.filter(i=>i.status==='Wishlist').slice(0,8);
-  return `
-    <section class="stat-grid">
-      <div class="stat-card"><div class="stat-icon">🎁</div><div><div class="stat-number">${owned.length}</div><div class="stat-label">items</div></div></div>
-      <div class="stat-card"><div class="stat-icon">▣</div><div><div class="stat-number">${state.collections.length}</div><div class="stat-label">collections</div></div></div>
-    </section>
+function setInfo(c){const owned=itemsForCollection(c.id).filter(i=>i.status==='Owned');const slots=Array.isArray(c.setMembers)?c.setMembers:[];const total=Number(c.setTotal||slots.length||0);const matched=new Set();slots.forEach((s,idx)=>{const found=owned.find(i=>String(i.setSlot||'').toLowerCase()===String(s.name||s).toLowerCase());if(found)matched.add(idx)});const collected=slots.length?matched.size:Math.min(total,owned.length);return{slots,total,collected,pct:total?Math.round(collected/total*100):0};}
+function renderSetTracker(c){const info=setInfo(c);if(!info.total)return'';let slots=[];if(info.slots.length){slots=info.slots.map((s,idx)=>{const name=s.name||s;const item=itemsForCollection(c.id).find(i=>i.status==='Owned'&&String(i.setSlot||'').toLowerCase()===String(name).toLowerCase());return item?`<button class="set-slot" data-item-id="${item.id}">${coverOf(item)?`<img src="${coverOf(item)}" alt="">`:esc(c.emoji||'🍡')}<span class="slot-label">${esc(name)}</span></button>`:`<button class="set-slot missing" data-action="add-missing-slot" data-slot="${esc(name)}">? <span>${esc(name)}</span></button>`;});}else{const owned=itemsForCollection(c.id).filter(i=>i.status==='Owned').slice(0,info.total);for(let n=0;n<info.total;n++){const i=owned[n];slots.push(i?`<button class="set-slot" data-item-id="${i.id}">${coverOf(i)?`<img src="${coverOf(i)}" alt="">`:esc(c.emoji||'🍡')}<span class="slot-label">${esc(i.name)}</span></button>`:`<button class="set-slot missing" data-action="add-item" data-default-collection="${c.id}">? <span>Missing ${n+1}</span></button>`);}}return `<section class="panel"><div class="row-between"><h3>Set Completion</h3><span class="tiny muted">${info.collected}/${info.total} · ${info.pct}%</span></div><div class="progress-track"><div class="progress-bar" style="width:${info.pct}%"></div></div><div class="set-strip" style="margin-top:10px">${slots.join('')}</div></section>`;}
 
-    <section class="section">
-      <div class="section-head"><h2 class="section-title">My Shelf</h2><button class="link-btn" data-route-link="collections">view all</button></div>
-      ${state.items.length ? renderShelf(recent) : `<div class="empty"><div class="empty-art">🍡</div><h3>Your shelf is waiting</h3><p>Add your first collectible and Mochi will start building your little digital shelf.</p><button class="soft-btn primary" data-action="add-item">+ Add first item</button></div>`}
-    </section>
+function renderCollection(){const c=collectionFor(state.collectionId);if(!c){state.route='collections';return renderCollections()}const items=filterAndSort(itemsForCollection(c.id));const subs=childrenOf(c.id);return `<div class="page-title-row"><button class="link-btn" data-route-link="collections">‹ Collections</button><button class="icon-btn" data-action="collection-menu">•••</button></div><div class="collection-hero ${c.cover?'':'no-cover'}" style="${!c.cover?`background:${c.color||'#ffe6e9'}`:''}">${c.cover?`<img class="collection-hero-cover" src="${c.cover}" alt=""><div class="collection-hero-overlay"></div>`:''}<div class="collection-hero-content"><div class="tiny">${esc(c.emoji||'🍡')} ${esc(TEMPLATES[c.template]?.label||'Collection')}</div><h2>${esc(c.name)}</h2><p>${esc(c.description||`${activeCount(c.id)} items`)} · ${money(itemsForCollection(c.id).reduce((a,i)=>a+Number(i.estimatedValue||i.pricePaid||0)*qty(i),0))} tracked value</p></div></div>${subs.length?`<section class="section"><div class="section-head"><h2 class="section-title">Subcollections</h2><button class="link-btn" data-action="add-subcollection">+ add</button></div><div class="collection-grid">${subs.map(renderCollectionCard).join('')}</div></section>`:''}${renderSetTracker(c)}<div class="toolbar"><div class="searchbar"><span>⌕</span><input id="itemSearch" placeholder="Search this collection" value="${esc(state.query)}"></div></div><div class="toolbar">${['All',...STATUS].map(s=>`<button class="chip ${state.filterStatus===s?'active':''}" data-status-filter="${s}">${s}</button>`).join('')}<select id="sortSelect" class="soft-btn"><option value="newest" ${state.sort==='newest'?'selected':''}>Newest</option><option value="oldest" ${state.sort==='oldest'?'selected':''}>Oldest</option><option value="name" ${state.sort==='name'?'selected':''}>Name A–Z</option><option value="priceHigh" ${state.sort==='priceHigh'?'selected':''}>Price high</option><option value="priceLow" ${state.sort==='priceLow'?'selected':''}>Price low</option></select></div><div class="section-head"><div class="segmented">${VIEWS.map(v=>`<button class="view-btn ${state.view===v?'active':''}" data-view="${v}">${v==='grid'?'▦':v==='list'?'☷':'Shelf'}</button>`).join('')}</div><button class="soft-btn primary" data-action="add-item" data-default-collection="${c.id}">+ Add item</button></div><div class="spacer"></div>${items.length?renderItemsByView(items):emptyBlock('✨','No matching items',`Add something to ${esc(c.name)} or change your filters.`,'+ Add item','add-item')}`;}
+function renderItemsByView(items){if(state.view==='list')return `<div class="item-list">${items.map(renderListItem).join('')}</div>`;if(state.view==='shelf')return renderShelf(items);return `<div class="item-grid">${items.map(renderItemCard).join('')}</div>`;}
+function renderItemCard(i){const dup=qty(i)>1||duplicateMatches(i,i.id).length;return `<button class="item-card" data-item-id="${i.id}">${coverOf(i)?`<img class="item-photo" src="${coverOf(i)}" alt="${esc(i.name)}">`:`<div class="item-photo-placeholder">${esc(collectionFor(i.collectionId)?.emoji||'🍡')}</div>`}${qty(i)>1?`<span class="qty-badge">×${qty(i)}</span>`:''}${dup?`<span class="dup-badge">duplicate</span>`:''}<div class="item-card-body"><div class="item-name">${esc(i.name)}</div><div class="item-sub">${esc(i.series||collectionFor(i.collectionId)?.name||'')}</div><span class="badge ${String(i.status||'Owned').toLowerCase()}">${esc(i.status||'Owned')}</span></div></button>`;}
+function renderListItem(i){return `<button class="list-card" data-item-id="${i.id}">${coverOf(i)?`<img class="list-thumb" src="${coverOf(i)}" alt="">`:`<span class="list-thumb placeholder">${esc(collectionFor(i.collectionId)?.emoji||'🍡')}</span>`}<span class="list-info"><span class="list-title">${esc(i.name)}${qty(i)>1?` ×${qty(i)}`:''}</span><span class="list-sub">${esc(i.series||collectionFor(i.collectionId)?.name||'')}</span><span class="list-meta">${tagsOf(i).slice(0,3).map(esc).join(' · ')}</span><span class="list-price">${money(i.pricePaid||i.targetPrice||0)}</span></span><span class="badge ${String(i.status||'Owned').toLowerCase()}">${esc(i.status||'Owned')}</span></button>`;}
 
-    <section class="section">
-      <div class="section-head"><h2 class="section-title">My Collections</h2><button class="link-btn" data-action="add-collection">+ add</button></div>
-      ${state.collections.length ? `<div class="collection-grid">${state.collections.slice(0,6).map(renderCollectionCard).join('')}</div>` : `<div class="empty"><div class="empty-art">🧺</div><h3>No collections yet</h3><p>Create categories like Manga, Plushies, Photocards, Games, Japan Finds, or anything you love.</p><button class="soft-btn primary" data-action="add-collection">Create collection</button></div>`}
-    </section>
+function renderWishlist(){let items=filterAndSort(wishlistItems());if(!['All','Wishlist','Ordered'].includes(state.filterStatus))state.filterStatus='All';if(state.filterStatus!=='All')items=items.filter(i=>i.status===state.filterStatus);return `<div class="page-title-row"><h2 class="page-title">🛍️ Wishlist</h2><button class="soft-btn primary" data-action="add-wishlist">+ Add</button></div><div class="wishlist-hero"><div class="row-between"><div><b>${items.reduce((a,i)=>a+qty(i),0)} items on your hunt</b><div class="tiny muted">Target total: ${money(items.reduce((a,i)=>a+Number(i.targetPrice||0)*qty(i),0))}</div></div><button class="chip ${state.settings.huntMode?'active':''}" data-action="toggle-hunt">🎯 Hunt Mode</button></div></div><div class="toolbar">${['All','Wishlist','Ordered'].map(s=>`<button class="chip ${state.filterStatus===s?'active':''}" data-status-filter="${s}">${s}</button>`).join('')}</div>${items.length?(state.settings.huntMode?items.map(renderHuntCard).join(''):`<div class="item-list">${items.map(renderListItem).join('')}</div>`):emptyBlock('👀','Your hunt list is empty','Save the things you want so they are easy to check while shopping.','Add wishlist item','add-wishlist')}`;}
+function renderHuntCard(i){return `<div class="hunt-card">${coverOf(i)?`<img src="${coverOf(i)}" alt="${esc(i.name)}">`:`<div class="hunt-img-placeholder">${esc(collectionFor(i.collectionId)?.emoji||'🍡')}</div>`}<div><div class="row-between"><b style="font-size:13px">${esc(i.name)}</b><span class="priority-pill">${esc(i.priority||'Medium')}</span></div><div class="tiny muted">${esc(collectionFor(i.collectionId)?.name||'')} ${i.store?`· ${esc(i.store)}`:''}</div><div style="font-weight:900;margin-top:6px">Target ${money(i.targetPrice||0)}</div>${i.purchaseUrl?`<div class="tiny muted" style="margin-top:3px">Link saved ✓</div>`:''}<div class="hunt-actions"><button data-action="mark-bought" data-item="${i.id}">✓ Bought</button><button data-action="mark-ordered" data-item="${i.id}">📦 Ordered</button><button data-item-id="${i.id}">Details</button></div></div></div>`;}
 
-    <section class="section">
-      <div class="section-head"><h2 class="section-title">Currently Hunting 👀</h2><button class="link-btn" data-route-link="wishlist">view all</button></div>
-      <div class="h-scroll">
-        ${hunted.length ? hunted.map(renderMiniItem).join('') : `<button class="item-mini" data-action="add-item" style="border:0;background:transparent;text-align:left"><div class="item-mini-empty">＋</div><div class="item-mini-name">Add wishlist item</div><div class="item-mini-sub">start your hunt</div></button>`}
-      </div>
-    </section>
-    ${budgetPanel()}
-  `;
-}
+function budgetPanel(full=false){const budget=Number(state.settings.monthlyBudget||0);if(!budget&&!full)return'';const spent=monthSpent(),pct=budget?Math.min(100,Math.round(spent/budget*100)):0;return `<section class="${full?'panel':'section'}"><div class="section-head"><h2 class="section-title">Monthly Collection Budget</h2>${full?`<button class="link-btn" data-action="settings">edit</button>`:''}</div>${budget?`<div class="progress-track"><div class="progress-bar" style="width:${pct}%"></div></div><div class="row-between tiny muted" style="margin-top:7px"><span>${money(spent)} spent</span><span>${money(budget)} budget</span></div>`:`<div class="tiny muted">Set a monthly budget in Settings.</div>`}</section>`;}
+function achievements(){const units=ownedItems().reduce((a,i)=>a+qty(i),0),cols=state.collections.length,wish=wishlistItems().length,sets=state.collections.filter(c=>{const s=setInfo(c);return s.total&&s.collected>=s.total}).length;return [{e:'🍡',t:'First Treasure',d:'Add your first owned item',ok:units>=1},{e:'🧺',t:'Collector',d:'Create 5 collections',ok:cols>=5},{e:'✨',t:'Shelf Full',d:'Collect 25 items',ok:units>=25},{e:'💯',t:'Century Club',d:'Collect 100 items',ok:units>=100},{e:'🎯',t:'Hunter',d:'Keep 10 wishlist items',ok:wish>=10},{e:'🏆',t:'Set Complete',d:'Complete a tracked set',ok:sets>=1}];}
+function renderMe(){const units=ownedItems().reduce((a,i)=>a+qty(i),0),spent=totalSpent(),dups=state.items.filter(i=>qty(i)>1||duplicateMatches(i,i.id).length).length;const top=[...state.collections].map(c=>({c,n:activeCount(c.id)})).sort((a,b)=>b.n-a.n)[0];return `<div class="page-title-row"><h2 class="page-title">My Mochi</h2><button class="icon-btn" data-action="settings">⚙︎</button></div><section class="panel" style="margin-top:14px;background:linear-gradient(145deg,#fff0ed,#fff8f1)"><h3>🍡 Your Collection</h3><div class="stats-list"><div class="stats-chip"><b>${units}</b><span>items collected</span></div><div class="stats-chip"><b>${money(spent)}</b><span>total spent</span></div><div class="stats-chip"><b>${state.collections.length}</b><span>collections</span></div><div class="stats-chip"><b>${dups}</b><span>duplicate groups</span></div></div></section>${top&&top.n?`<section class="panel"><h3>🏅 Most Collected</h3>${renderCollectionCard(top.c)}</section>`:''}${budgetPanel(true)}<section class="panel"><h3>Collection Passport</h3><div class="achievement-grid">${achievements().map(a=>`<div class="achievement ${a.ok?'':'locked'}"><b>${a.e} ${a.t}</b><span>${a.d}</span></div>`).join('')}</div></section><section class="panel"><h3>Little Mochi Tools</h3><div class="tool-grid"><button class="tool-card" data-action="random-treasure"><strong>🎲 Random Treasure</strong><small>Resurface a forgotten collectible.</small></button><button class="tool-card" data-action="mystery-summary"><strong>🎁 Mystery Pull Tracker</strong><small>Blind boxes, gachapon and card pulls.</small></button><button class="tool-card" data-action="duplicate-summary"><strong>👯 Duplicates</strong><small>See duplicates and quantities together.</small></button><button class="tool-card" data-action="collection-stats"><strong>📊 Collection Stats</strong><small>Quick breakdown of your collection.</small></button><button class="tool-card" data-action="export-json"><strong>↗ Backup JSON</strong><small>Portable full Mochi backup.</small></button><button class="tool-card" data-action="export-csv"><strong>▤ Export CSV</strong><small>Spreadsheet-friendly item catalog.</small></button><button class="tool-card" data-action="import-json"><strong>↙ Import Backup</strong><small>Restore your Mochi data.</small></button><button class="tool-card" data-action="about-build"><strong>♡ Build 2</strong><small>Local-first collection experience.</small></button></div></section>`;}
 
-function renderShelf(items){
-  const visible=items.slice(0,10);
-  const row1=visible.slice(0,5), row2=visible.slice(5,10);
-  const obj=i=>`<button class="shelf-object" data-item-id="${i.id}" style="border:0;background:transparent;padding:0;cursor:pointer">${i.photo?`<img src="${i.photo}" alt="${esc(i.name)}">`:`<div class="shelf-placeholder">${esc(collectionFor(i.collectionId)?.emoji||'🍡')}</div>`}</button>`;
-  return `<div class="shelf"><div class="shelf-row">${row1.map(obj).join('')}</div>${row2.length?`<div class="shelf-row">${row2.map(obj).join('')}</div>`:''}</div>`;
-}
+function bindDynamicEvents(){$$('[data-route-link]').forEach(b=>b.onclick=()=>{state.query='';state.filterStatus='All';setRoute(b.dataset.routeLink)});$$('[data-collection-id]').forEach(b=>b.onclick=()=>{state.query='';state.filterStatus='All';setRoute('collection',{collectionId:b.dataset.collectionId})});$$('[data-item-id]').forEach(b=>b.onclick=e=>{e.stopPropagation();openItemDetail(b.dataset.itemId)});$$('[data-action]').forEach(b=>b.onclick=e=>{e.stopPropagation();handleAction(b.dataset.action,b)});$$('[data-status-filter]').forEach(b=>b.onclick=()=>{state.filterStatus=b.dataset.statusFilter;render()});$$('[data-view]').forEach(b=>b.onclick=()=>{state.view=b.dataset.view;render()});const cs=$('#collectionSearch');if(cs)cs.oninput=e=>{state.query=e.target.value;render()};const is=$('#itemSearch');if(is)is.oninput=e=>{state.query=e.target.value;render()};const sort=$('#sortSelect');if(sort)sort.onchange=e=>{state.sort=e.target.value;render()};}
+async function handleAction(action,el){if(action==='add-collection')openCollectionForm();if(action==='add-subcollection')openCollectionForm(null,state.collectionId);if(action==='add-item')openItemForm(null,el?.dataset.defaultCollection||state.collectionId||'');if(action==='add-wishlist')openItemForm(null,'','Wishlist');if(action==='add-missing-slot')openItemForm(null,state.collectionId,'Wishlist',el.dataset.slot);if(action==='collection-menu')openCollectionMenu();if(action==='toggle-hunt'){await saveSetting('huntMode',!state.settings.huntMode);render()}if(action==='settings')openSettings();if(action==='random-treasure')randomTreasure();if(action==='mystery-summary')openMysterySummary();if(action==='duplicate-summary')openDuplicateSummary();if(action==='collection-stats')openStats();if(action==='export-json')exportJSON();if(action==='export-csv')exportCSV();if(action==='import-json')$('#importInput').click();if(action==='about-build')showToast('Mochi Build 2 • local-first • no account required ♡','success');if(action==='mark-bought')await quickStatus(el.dataset.item,'Owned');if(action==='mark-ordered')await quickStatus(el.dataset.item,'Ordered');}
+async function quickStatus(id,status){const i=state.items.find(x=>x.id===id);if(!i)return;i.status=status;if(status==='Owned'&&!i.dateAcquired)i.dateAcquired=todayISO();i.updatedAt=new Date().toISOString();await storePut(STORES.items,i);await loadData();render();showToast(status==='Owned'?'Added to your collection ♡':'Marked as ordered','success');}
 
-function renderCollectionCard(c){
-  return `<button class="collection-card" data-collection-id="${c.id}" type="button"><span class="collection-emoji">${esc(c.emoji||'🍡')}</span><span class="collection-meta"><span class="collection-name">${esc(c.name)}</span><span class="collection-count">${collectionCount(c.id)} items</span></span><span class="chev">›</span></button>`;
-}
+function openModal(html){$('#modalRoot').innerHTML=`<div class="modal-backdrop" id="modalBackdrop"><section class="modal"><div class="modal-handle"></div>${html}</section></div>`;$('#modalBackdrop').onclick=e=>{if(e.target.id==='modalBackdrop')closeModal()};$$('[data-close-modal]').forEach(b=>b.onclick=closeModal)}
+function closeModal(){$('#modalRoot').innerHTML=''}
+function modalHead(title){return `<div class="modal-head"><h2 class="modal-title">${title}</h2><button class="close-btn" data-close-modal type="button">×</button></div>`}
 
-function renderMiniItem(i){
-  return `<button class="item-mini" data-item-id="${i.id}" type="button" style="border:0;background:transparent;padding:0;text-align:left;cursor:pointer">
-    ${i.photo?`<img class="item-mini-photo" src="${i.photo}" alt="${esc(i.name)}">`:`<div class="item-mini-empty">${esc(collectionFor(i.collectionId)?.emoji||'🍡')}</div>`}
-    <span class="heart-dot">♡</span><div class="item-mini-name">${esc(i.name)}</div><div class="item-mini-sub">${money(i.targetPrice||i.pricePaid||0)}</div>
-  </button>`;
-}
+function templateCards(selected){return `<div class="template-grid">${Object.entries(TEMPLATES).map(([k,t])=>`<button type="button" class="template-card ${selected===k?'active':''}" data-template="${k}"><span>${t.emoji}</span><b>${t.label}</b></button>`).join('')}</div>`}
+function openCollectionForm(existing=null,parentId=''){const c=existing||{name:'',emoji:'🍡',description:'',template:'general',color:COLORS[0],cover:'',setTotal:'',setMembers:[],customFieldLabels:[],parentId:parentId||''};let selectedTemplate=c.template||'general',newCover=c.cover||'';openModal(`${modalHead(existing?'Edit Collection':parentId?'New Subcollection':'New Collection')}<form id="collectionForm" class="form-grid"><div class="field"><label>Collection type</label>${templateCards(selectedTemplate)}</div><label class="cover-picker"><input id="coverInput" type="file" accept="image/*"><div id="coverPreview">${newCover?`<img src="${newCover}" alt="">`:`<div class="photo-copy"><b>＋</b>Add a collection cover</div>`}</div></label><div class="field"><label>Name *</label><input name="name" maxlength="60" required value="${esc(c.name)}" placeholder="e.g. JJK Figures"></div><div class="field-row"><div class="field"><label>Icon</label><input name="emoji" maxlength="4" value="${esc(c.emoji||'🍡')}"></div><div class="field"><label>Color</label><select name="color">${COLORS.map(x=>`<option value="${x}" ${x===c.color?'selected':''}>${x}</option>`).join('')}</select></div></div><div class="field"><label>Parent collection</label><select name="parentId"><option value="">None</option>${state.collections.filter(x=>x.id!==existing?.id&&!x.parentId).map(x=>`<option value="${x.id}" ${(c.parentId||parentId)===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div><div class="field"><label>Description</label><textarea name="description" maxlength="280">${esc(c.description||'')}</textarea></div><div class="field-row"><div class="field"><label>Set total</label><input name="setTotal" type="number" min="0" step="1" value="${esc(c.setTotal||'')}" placeholder="12"></div><div class="field"><label>Set member names</label><input name="setMembers" value="${esc((c.setMembers||[]).map(x=>x.name||x).join(', '))}" placeholder="Gojo, Yuji, Megumi..."></div></div><div class="field"><label>Default custom fields</label><input name="customFieldLabels" value="${esc((c.customFieldLabels||[]).join(', '))}" placeholder="Manufacturer, Scale, Release"></div><div class="form-actions"><button type="button" class="soft-btn" data-close-modal>Cancel</button><button class="soft-btn primary" type="submit">Save collection</button></div></form>`);$$('[data-template]').forEach(b=>b.onclick=()=>{selectedTemplate=b.dataset.template;$$('[data-template]').forEach(x=>x.classList.toggle('active',x===b));const form=$('#collectionForm');if(!form.emoji.value||form.emoji.value==='🍡')form.emoji.value=TEMPLATES[selectedTemplate].emoji;if(!form.customFieldLabels.value)form.customFieldLabels.value=TEMPLATES[selectedTemplate].fields.join(', ')});$('#coverInput').onchange=async e=>{const f=e.target.files[0];if(!f)return;newCover=await imageToDataURL(f,1200,.8);$('#coverPreview').innerHTML=`<img src="${newCover}" alt="">`};$('#collectionForm').onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.currentTarget),name=String(fd.get('name')||'').trim();if(!name)return;const dupe=state.collections.find(x=>x.id!==existing?.id&&x.parentId===fd.get('parentId')&&x.name.toLowerCase()===name.toLowerCase());if(dupe)return showToast('You already have a collection with that name here.','error');const members=String(fd.get('setMembers')||'').split(',').map(x=>x.trim()).filter(Boolean).map(name=>({name}));const custom=String(fd.get('customFieldLabels')||'').split(',').map(x=>x.trim()).filter(Boolean);const rec={...(existing||{}),id:existing?.id||uid('col'),name,emoji:String(fd.get('emoji')||TEMPLATES[selectedTemplate].emoji||'🍡').trim(),template:selectedTemplate,color:fd.get('color'),cover:newCover,description:String(fd.get('description')||'').trim(),parentId:fd.get('parentId')||'',setTotal:Number(fd.get('setTotal')||members.length||0)||'',setMembers:members,customFieldLabels:custom,order:existing?.order??state.collections.length,createdAt:existing?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),archived:false};await storePut(STORES.collections,rec);await loadData();closeModal();render();showToast(existing?'Collection updated ♡':'Collection created ♡','success')};}
 
-function renderCollections(){
-  return `<div class="page-title-row"><h2 class="page-title">Collections</h2><button class="soft-btn primary" data-action="add-collection">+ New</button></div>
-    <div class="toolbar"><div class="searchbar"><span>⌕</span><input id="collectionSearch" placeholder="Search collections" value="${esc(state.query)}"></div></div>
-    ${filteredCollections().length?`<div class="collection-grid">${filteredCollections().map(renderCollectionCard).join('')}</div>`:`<div class="empty"><div class="empty-art">🧺</div><h3>Nothing here yet</h3><p>Create your first collection and start cataloging.</p><button class="soft-btn primary" data-action="add-collection">Create collection</button></div>`}`;
-}
-function filteredCollections(){ const q=state.query.trim().toLowerCase(); return !q?state.collections:state.collections.filter(c=>`${c.name} ${c.description||''}`.toLowerCase().includes(q)); }
+function itemCollectionOptions(selected=''){return `<option value="">Choose collection</option>${state.collections.map(c=>`<option value="${c.id}" ${selected===c.id?'selected':''}>${esc(c.emoji||'🍡')} ${esc(c.name)}</option>`).join('')}`}
+function renderCustomRows(fields={}){return Object.entries(fields).map(([k,v])=>`<div class="custom-field-row"><input class="cf-key" value="${esc(k)}" placeholder="Field"><input class="cf-value" value="${esc(v)}" placeholder="Value"><button type="button" data-remove-cf>×</button></div>`).join('')}
+function openItemForm(existing=null,defaultCollection='',forcedStatus='',forcedSlot=''){if(!state.collections.length){showToast('Create a collection first so Mochi knows where to put the item.','error');openCollectionForm();return}const i=existing||{name:'',collectionId:defaultCollection,status:forcedStatus||'Owned',series:'',character:'',quantity:1,pricePaid:'',estimatedValue:'',targetPrice:'',dateAcquired:forcedStatus==='Wishlist'?'':todayISO(),store:'',condition:'',notes:'',tags:[],priority:'Medium',photos:[],coverPhotoIndex:0,mysteryPull:false,mysterySeries:'',setSlot:forcedSlot||'',purchaseUrl:'',customFields:{}};let photos=i.photos?.length?[...i.photos]:(i.photo?[i.photo]:[]),coverIndex=i.coverPhotoIndex||0;const c=collectionFor(i.collectionId||defaultCollection);let custom={...(i.customFields||{})};if(!existing&&c)(c.customFieldLabels||TEMPLATES[c.template]?.fields||[]).forEach(k=>{if(!(k in custom))custom[k]=''});openModal(`${modalHead(existing?'Edit Item':'Add Item')}<form id="itemForm" class="form-grid"><label class="photo-picker"><input id="photoInput" type="file" accept="image/*" multiple><div class="photo-copy"><b>＋</b>Add one or more photos<br><span class="tiny">tap a thumbnail below to make it the cover</span></div></label><div id="photoPreviews" class="photo-previews"></div><div class="field"><label>Item name *</label><input name="name" maxlength="100" required value="${esc(i.name)}" placeholder="e.g. Gojo Satoru Nendoroid"></div><div class="field-row"><div class="field"><label>Collection *</label><select id="itemCollection" name="collectionId" required>${itemCollectionOptions(i.collectionId||defaultCollection)}</select></div><div class="field"><label>Status</label><select name="status">${STATUS.map(s=>`<option ${s===(forcedStatus||i.status)?'selected':''}>${s}</option>`).join('')}</select></div></div><div class="field-row"><div class="field"><label>Series / Franchise</label><input name="series" value="${esc(i.series||'')}"></div><div class="field"><label>Character / Subject</label><input name="character" value="${esc(i.character||'')}"></div></div><div class="field-row"><div class="field"><label>Quantity owned</label><input name="quantity" type="number" min="1" step="1" value="${qty(i)}"></div><div class="field"><label>Set slot / member</label><input name="setSlot" value="${esc(i.setSlot||forcedSlot||'')}" placeholder="e.g. Gojo"></div></div><div class="field-row"><div class="field"><label>Price paid (each)</label><input name="pricePaid" type="number" min="0" step="0.01" value="${esc(i.pricePaid||'')}"></div><div class="field"><label>Estimated value</label><input name="estimatedValue" type="number" min="0" step="0.01" value="${esc(i.estimatedValue||'')}"></div></div><div class="field-row"><div class="field"><label>Target price</label><input name="targetPrice" type="number" min="0" step="0.01" value="${esc(i.targetPrice||'')}"></div><div class="field"><label>Priority</label><select name="priority">${PRIORITIES.map(p=>`<option ${p===i.priority?'selected':''}>${p}</option>`).join('')}</select></div></div><div class="field-row"><div class="field"><label>Date acquired</label><input name="dateAcquired" type="date" value="${esc(i.dateAcquired||'')}"></div><div class="field"><label>Condition</label><input name="condition" value="${esc(i.condition||'')}" placeholder="Like New"></div></div><div class="field-row"><div class="field"><label>Store / Source</label><input name="store" value="${esc(i.store||'')}"></div><div class="field"><label>Purchase link</label><input name="purchaseUrl" type="url" value="${esc(i.purchaseUrl||'')}" placeholder="https://..."></div></div><div class="field"><label>Tags</label><input name="tags" value="${esc(tagsOf(i).join(', '))}" placeholder="JJK, Gojo, Japan, Nendoroid"></div><div class="field"><label>Custom fields</label><div id="customFields" class="custom-fields-box">${renderCustomRows(custom)}</div><button id="addCustomField" class="soft-btn" type="button">+ Add custom field</button></div><div class="field"><label>Memory / Notes</label><textarea name="notes">${esc(i.notes||'')}</textarea></div><div class="panel" style="margin:0"><label style="display:flex;gap:9px;align-items:center"><input name="mysteryPull" type="checkbox" ${i.mysteryPull?'checked':''}><b style="font-size:12px">Mystery Pull</b></label><div class="field" style="margin-top:10px"><label>Blind box / gachapon series</label><input name="mysterySeries" value="${esc(i.mysterySeries||'')}" placeholder="e.g. JJK Blind Box Series 1"></div></div><div class="form-actions"><button type="button" class="soft-btn" data-close-modal>Cancel</button><button class="soft-btn primary" type="submit">Save item</button></div></form>`);
+  function redrawPhotos(){const root=$('#photoPreviews');root.innerHTML=photos.map((p,idx)=>`<div class="photo-preview" style="outline:${idx===coverIndex?'2px solid var(--pink)':'none'}"><img src="${p}" data-cover-photo="${idx}" alt=""><button type="button" data-remove-photo="${idx}">×</button></div>`).join('');$$('[data-cover-photo]').forEach(x=>x.onclick=()=>{coverIndex=Number(x.dataset.coverPhoto);redrawPhotos()});$$('[data-remove-photo]').forEach(x=>x.onclick=e=>{e.stopPropagation();const idx=Number(x.dataset.removePhoto);photos.splice(idx,1);if(coverIndex>=photos.length)coverIndex=Math.max(0,photos.length-1);redrawPhotos()})}
+  redrawPhotos();$('#photoInput').onchange=async e=>{for(const f of [...e.target.files].slice(0,8)){photos.push(await imageToDataURL(f,1400,.8))}redrawPhotos()};function bindCFRemove(){$$('[data-remove-cf]').forEach(b=>b.onclick=()=>{b.parentElement.remove()})}bindCFRemove();$('#addCustomField').onclick=()=>{$('#customFields').insertAdjacentHTML('beforeend','<div class="custom-field-row"><input class="cf-key" placeholder="Field"><input class="cf-value" placeholder="Value"><button type="button" data-remove-cf>×</button></div>');bindCFRemove()};$('#itemCollection').onchange=e=>{const col=collectionFor(e.target.value);if(!col)return;const existingKeys=new Set($$('.cf-key').map(x=>x.value));(col.customFieldLabels||TEMPLATES[col.template]?.fields||[]).forEach(k=>{if(!existingKeys.has(k)){$('#customFields').insertAdjacentHTML('beforeend',`<div class="custom-field-row"><input class="cf-key" value="${esc(k)}"><input class="cf-value" placeholder="Value"><button type="button" data-remove-cf>×</button></div>`)}});bindCFRemove()};$('#itemForm').onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.currentTarget),name=String(fd.get('name')||'').trim(),collectionId=fd.get('collectionId');if(!name||!collectionId)return;const candidate={name,collectionId};const matches=duplicateMatches(candidate,existing?.id||'');if(matches.length&&!existing&&!confirm(`Mochi found ${matches.length} item(s) with the same name in this collection. Add it anyway?`))return;const customFields={};$$('.custom-field-row').forEach(r=>{const k=$('.cf-key',r).value.trim(),v=$('.cf-value',r).value.trim();if(k)customFields[k]=v});const rec={...(existing||{}),id:existing?.id||uid('item'),name,collectionId,status:fd.get('status'),series:String(fd.get('series')||'').trim(),character:String(fd.get('character')||'').trim(),quantity:Math.max(1,Number(fd.get('quantity')||1)),setSlot:String(fd.get('setSlot')||'').trim(),pricePaid:Number(fd.get('pricePaid')||0)||'',estimatedValue:Number(fd.get('estimatedValue')||0)||'',targetPrice:Number(fd.get('targetPrice')||0)||'',dateAcquired:fd.get('dateAcquired')||'',priority:fd.get('priority'),store:String(fd.get('store')||'').trim(),purchaseUrl:String(fd.get('purchaseUrl')||'').trim(),condition:String(fd.get('condition')||'').trim(),tags:String(fd.get('tags')||'').split(',').map(x=>x.trim()).filter(Boolean),notes:String(fd.get('notes')||'').trim(),mysteryPull:fd.get('mysteryPull')==='on',mysterySeries:String(fd.get('mysterySeries')||'').trim(),customFields,photos,coverPhotoIndex:coverIndex,photo:'',createdAt:existing?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),archived:false};await storePut(STORES.items,rec);await loadData();closeModal();render();showToast(existing?'Item updated ♡':'Added to Mochi ♡','success')};}
 
-function renderCollectionDetail(){
-  const c=collectionFor(state.collectionId);
-  if(!c){ state.route='collections'; return renderCollections(); }
-  let items=itemsForCollection(c.id);
-  if(state.query.trim()){ const q=state.query.toLowerCase(); items=items.filter(i=>`${i.name} ${i.series||''} ${i.character||''} ${i.tags||''}`.toLowerCase().includes(q)); }
-  if(state.filterStatus!=='All') items=items.filter(i=>i.status===state.filterStatus);
-  items=sortItems(items);
-  const completion = c.setTotal ? Math.min(100,Math.round((items.filter(i=>i.status==='Owned').length/Number(c.setTotal))*100)) : null;
-  return `<div class="page-title-row"><div><button class="link-btn" data-route-link="collections">‹ Collections</button><h2 class="page-title">${esc(c.emoji||'🍡')} ${esc(c.name)}</h2><div class="tiny muted">${itemsForCollection(c.id).length} items</div></div><button class="icon-btn" data-action="collection-menu" aria-label="Collection menu">•••</button></div>
-    ${c.description?`<p class="muted" style="font-size:13px">${esc(c.description)}</p>`:''}
-    ${completion!==null?`<div class="panel"><div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:8px"><strong>Set Completion</strong><span class="tiny muted">${itemsForCollection(c.id).filter(i=>i.status==='Owned').length}/${Number(c.setTotal)}</span></div><div class="progress-track"><div class="progress-bar" style="width:${completion}%"></div></div><div class="tiny muted" style="margin-top:6px">${completion}% complete</div></div>`:''}
-    <div class="toolbar"><div class="searchbar"><span>⌕</span><input id="itemSearch" placeholder="Search this collection" value="${esc(state.query)}"></div></div>
-    <div class="toolbar">${['All',...STATUS].map(s=>`<button class="chip ${state.filterStatus===s?'active':''}" data-status-filter="${s}">${s}</button>`).join('')}<select id="sortSelect" class="soft-btn"><option value="newest" ${state.sort==='newest'?'selected':''}>Newest</option><option value="oldest" ${state.sort==='oldest'?'selected':''}>Oldest</option><option value="name" ${state.sort==='name'?'selected':''}>Name A–Z</option><option value="priceHigh" ${state.sort==='priceHigh'?'selected':''}>Price high</option><option value="priceLow" ${state.sort==='priceLow'?'selected':''}>Price low</option></select></div>
-    ${items.length?`<div class="item-grid">${items.map(renderItemCard).join('')}</div>`:`<div class="empty"><div class="empty-art">✨</div><h3>No matching items</h3><p>Add something to ${esc(c.name)} or change your filters.</p><button class="soft-btn primary" data-action="add-item" data-default-collection="${c.id}">+ Add item</button></div>`}`;
-}
+function imageToDataURL(file,max=1400,quality=.8){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;if(Math.max(w,h)>max){const r=max/Math.max(w,h);w=Math.round(w*r);h=Math.round(h*r)}const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;canvas.getContext('2d').drawImage(img,0,0,w,h);resolve(canvas.toDataURL('image/jpeg',quality))};img.onerror=reject;img.src=reader.result};reader.onerror=reject;reader.readAsDataURL(file)});}
 
-function sortItems(items){
-  const arr=[...items];
-  if(state.sort==='oldest') return arr.sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
-  if(state.sort==='name') return arr.sort((a,b)=>a.name.localeCompare(b.name));
-  if(state.sort==='priceHigh') return arr.sort((a,b)=>Number(b.pricePaid||b.targetPrice||0)-Number(a.pricePaid||a.targetPrice||0));
-  if(state.sort==='priceLow') return arr.sort((a,b)=>Number(a.pricePaid||a.targetPrice||0)-Number(b.pricePaid||b.targetPrice||0));
-  return arr.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
-}
+function detailRow(label,value){if(value===undefined||value===null||value==='')return'';return `<div class="detail-row"><span>${esc(label)}</span><span>${value}</span></div>`}
+function openItemDetail(id){const i=state.items.find(x=>x.id===id);if(!i)return;const c=collectionFor(i.collectionId),photos=i.photos?.length?i.photos:(i.photo?[i.photo]:[]),tags=tagsOf(i),dupes=duplicateMatches(i,i.id);let active=coverOf(i);openModal(`${modalHead(esc(i.name))}<div id="detailMainPhoto">${active?`<img class="detail-photo" src="${active}" alt="${esc(i.name)}">`:`<div class="item-photo-placeholder" style="border-radius:20px">${esc(c?.emoji||'🍡')}</div>`}</div>${photos.length>1?`<div class="detail-gallery">${photos.map(p=>`<button type="button" data-detail-photo="${p}"><img src="${p}" alt=""></button>`).join('')}</div>`:''}<div style="margin-top:13px"><div class="row-between"><div><b style="font-size:18px">${esc(i.name)}</b><div class="tiny muted">${esc(i.series||c?.name||'')}</div></div><span class="badge ${String(i.status||'Owned').toLowerCase()}">${esc(i.status||'Owned')}</span></div>${tags.length?`<div class="tag-row" style="margin-top:9px">${tags.map(t=>`<span class="tag">#${esc(t)}</span>`).join('')}</div>`:''}</div>${dupes.length||qty(i)>1?`<div class="duplicate-card" style="margin-top:11px"><b>👯 Duplicate tracker</b><div class="tiny">${qty(i)} in this entry${dupes.length?` + ${dupes.length} matching entr${dupes.length===1?'y':'ies'}`:''}</div></div>`:''}<div class="detail-grid">${detailRow('Collection',esc(c?.name||''))}${detailRow('Quantity',qty(i))}${detailRow('Character / Subject',esc(i.character||''))}${detailRow('Set slot',esc(i.setSlot||''))}${detailRow('Price paid',i.pricePaid!==''?money(i.pricePaid):'')}${detailRow('Estimated value',i.estimatedValue!==''?money(i.estimatedValue):'')}${detailRow('Target price',i.targetPrice!==''?money(i.targetPrice):'')}${detailRow('Date acquired',i.dateAcquired?fmtDate(i.dateAcquired):'')}${detailRow('Store / Source',esc(i.store||''))}${detailRow('Condition',esc(i.condition||''))}${detailRow('Priority',esc(i.priority||''))}${detailRow('Mystery series',esc(i.mysterySeries||''))}${Object.entries(i.customFields||{}).map(([k,v])=>detailRow(k,esc(v))).join('')}</div>${i.notes?`<section class="panel" style="margin-top:12px"><h3>♡ Memory / Notes</h3><div style="font-size:12px;line-height:1.5">${esc(i.notes)}</div></section>`:''}${i.purchaseUrl?`<button id="openPurchaseLink" class="soft-btn" style="width:100%;margin-top:10px">Open saved purchase link ↗</button>`:''}<div class="detail-actions"><button class="soft-btn" id="editItem">Edit</button><button class="soft-btn" id="duplicateItem">Duplicate</button><button class="soft-btn danger" id="deleteItem">Delete</button></div>`);$$('[data-detail-photo]').forEach(b=>b.onclick=()=>{$('#detailMainPhoto').innerHTML=`<img class="detail-photo" src="${b.dataset.detailPhoto}" alt="">`});if($('#openPurchaseLink'))$('#openPurchaseLink').onclick=()=>window.open(i.purchaseUrl,'_blank','noopener');$('#editItem').onclick=()=>openItemForm(i);$('#duplicateItem').onclick=async()=>{const copy={...i,id:uid('item'),name:`${i.name} Copy`,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};await storePut(STORES.items,copy);await loadData();closeModal();render();showToast('Item duplicated ♡','success')};$('#deleteItem').onclick=async()=>{if(!confirm(`Delete ${i.name}?`))return;await storeDelete(STORES.items,i.id);await loadData();closeModal();render();showToast('Item deleted','success')};}
 
-function renderItemCard(i){
-  return `<button class="item-card" data-item-id="${i.id}" type="button" style="padding:0;text-align:left">
-    ${i.photo?`<img class="item-photo" src="${i.photo}" alt="${esc(i.name)}">`:`<div class="item-photo-placeholder">${esc(collectionFor(i.collectionId)?.emoji||'🍡')}</div>`}
-    <div class="item-card-body"><div class="item-name">${esc(i.name)}</div><div class="item-sub">${esc(i.series||collectionFor(i.collectionId)?.name||'')}</div><div class="badge ${i.status.toLowerCase()}">${esc(i.status)}</div></div>
-  </button>`;
-}
+function openCollectionMenu(){const c=collectionFor(state.collectionId);if(!c)return;openModal(`${modalHead(esc(c.name))}<div class="tool-grid"><button class="tool-card" id="editCollection"><strong>✎ Edit collection</strong><small>Cover, template, set, fields and organization.</small></button><button class="tool-card" id="addSub"><strong>↳ Add subcollection</strong><small>Nest another collection underneath this one.</small></button></div><button class="soft-btn danger" id="deleteCollection" style="width:100%;margin-top:12px">Delete collection</button>`);$('#editCollection').onclick=()=>openCollectionForm(c);$('#addSub').onclick=()=>openCollectionForm(null,c.id);$('#deleteCollection').onclick=async()=>{const count=itemsForCollection(c.id).length;if(count&& !confirm(`This collection has ${count} item entries. Delete the collection and all its items?`))return;if(!count&&!confirm(`Delete ${c.name}?`))return;for(const i of itemsForCollection(c.id))await storeDelete(STORES.items,i.id);for(const sub of childrenOf(c.id)){for(const i of itemsForCollection(sub.id))await storeDelete(STORES.items,i.id);await storeDelete(STORES.collections,sub.id)}await storeDelete(STORES.collections,c.id);await loadData();closeModal();setRoute('collections');showToast('Collection deleted','success')};}
 
-function renderWishlist(){
-  let items=wishlistItems();
-  if(state.filterStatus==='Wishlist') items=items.filter(i=>i.status==='Wishlist');
-  if(state.filterStatus==='Ordered') items=items.filter(i=>i.status==='Ordered');
-  items=sortItems(items);
-  return `<div class="page-title-row"><h2 class="page-title">🛍️ Wishlist</h2><button class="soft-btn primary" data-action="add-wishlist">+ Add</button></div>
-    <div class="toolbar">${['All','Wishlist','Ordered'].map(s=>`<button class="chip ${state.filterStatus===s?'active':''}" data-status-filter="${s}">${s}</button>`).join('')}<button class="chip ${state.settings.huntMode?'active':''}" data-action="toggle-hunt">🎯 Hunt Mode</button></div>
-    ${state.settings.huntMode?`<div class="panel"><h3>🎯 Hunt Mode is on</h3><div class="tiny muted">Fast shopping view: priority, reference photo, target price, and collection only.</div></div>`:''}
-    ${items.length?items.map(i=>`<button class="list-card" data-item-id="${i.id}" type="button" style="width:100%;text-align:left;cursor:pointer">${i.photo?`<img class="list-thumb" src="${i.photo}" alt="">`:`<span class="list-thumb placeholder">${esc(collectionFor(i.collectionId)?.emoji||'🍡')}</span>`}<span class="list-info"><span class="list-title">${esc(i.name)}</span><span class="list-sub">${esc(i.series||collectionFor(i.collectionId)?.name||'')}</span><span class="list-price">${money(i.targetPrice||i.pricePaid||0)}</span></span><span class="priority-pill">${esc(i.priority||'Medium')}</span></button>`).join(''):`<div class="empty"><div class="empty-art">👀</div><h3>Your hunt list is empty</h3><p>Add items you’re looking for so you can pull them up quickly while shopping.</p><button class="soft-btn primary" data-action="add-wishlist">Add wishlist item</button></div>`}`;
-}
+function openSettings(){openModal(`${modalHead('Settings')}<form id="settingsForm" class="form-grid"><div class="field"><label>Name (optional)</label><input name="displayName" value="${esc(state.settings.displayName||'')}" placeholder="Leave blank for no name"></div><div class="field-row"><div class="field"><label>Currency symbol</label><input name="currency" maxlength="5" value="${esc(state.settings.currency||'₱')}"></div><div class="field"><label>Monthly budget</label><input name="monthlyBudget" type="number" min="0" step="0.01" value="${esc(state.settings.monthlyBudget||'')}"></div></div><div class="field"><label>Default collection view</label><select name="defaultView">${VIEWS.map(v=>`<option value="${v}" ${state.settings.defaultView===v?'selected':''}>${v[0].toUpperCase()+v.slice(1)}</option>`).join('')}</select></div><div class="form-actions"><button type="button" class="soft-btn" data-close-modal>Cancel</button><button class="soft-btn primary">Save</button></div></form>`);$('#settingsForm').onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);for(const [k,v] of [['displayName',String(fd.get('displayName')||'').trim()],['currency',String(fd.get('currency')||'₱').trim()||'₱'],['monthlyBudget',Number(fd.get('monthlyBudget')||0)],['defaultView',fd.get('defaultView')]])await saveSetting(k,v);state.view=state.settings.defaultView;closeModal();render();showToast('Settings saved ♡','success')};}
 
-function renderMe(){
-  const owned=ownedItems();
-  const spent=totalSpent();
-  const byCollection=[...state.collections].map(c=>({c,n:itemsForCollection(c.id).filter(i=>i.status==='Owned').length})).sort((a,b)=>b.n-a.n)[0];
-  return `<div class="page-title-row"><h2 class="page-title">My Mochi</h2><button class="icon-btn" data-action="settings">⚙︎</button></div>
-    <section class="panel" style="margin-top:14px;background:linear-gradient(145deg,#fff0ed,#fff8f1)"><h3>🍡 Your Collection</h3><div class="stats-list"><div class="stats-chip"><b>${owned.length}</b><span>items collected</span></div><div class="stats-chip"><b>${money(spent)}</b><span>total spent</span></div><div class="stats-chip"><b>${state.collections.length}</b><span>collections</span></div><div class="stats-chip"><b>${wishlistItems().length}</b><span>currently hunting</span></div></div></section>
-    ${byCollection&&byCollection.n?`<section class="panel"><h3>🏅 Most Collected</h3><div class="list-card" style="margin:0"><span class="collection-emoji">${esc(byCollection.c.emoji||'🍡')}</span><span class="list-info"><span class="list-title">${esc(byCollection.c.name)}</span><span class="list-sub">${byCollection.n} owned items</span></span></div></section>`:''}
-    ${budgetPanel(true)}
-    <section class="panel"><h3>Little Mochi Tools</h3><div class="tool-grid">
-      <button class="tool-card" data-action="random-treasure"><strong>🎲 Random Treasure</strong><small>Resurface one item from your collection.</small></button>
-      <button class="tool-card" data-action="mystery-summary"><strong>🎁 Mystery Pulls</strong><small>See items marked as blind-box or gachapon pulls.</small></button>
-      <button class="tool-card" data-action="export-json"><strong>↗ Backup JSON</strong><small>Save a complete portable Mochi backup.</small></button>
-      <button class="tool-card" data-action="export-csv"><strong>▤ Export CSV</strong><small>Export your item catalog as a spreadsheet-friendly file.</small></button>
-      <button class="tool-card" data-action="import-json"><strong>↙ Import Backup</strong><small>Restore a Mochi JSON backup on this device.</small></button>
-      <button class="tool-card" data-action="about-build"><strong>♡ Build 1</strong><small>Offline-first personal collection tracker.</small></button>
-    </div></section>`;
-}
+function randomTreasure(){const pool=ownedItems();if(!pool.length)return showToast('Add an owned item first ♡','error');const i=pool[Math.floor(Math.random()*pool.length)];openItemDetail(i.id)}
+function openDuplicateSummary(){const groups=[];const seen=new Set();state.items.forEach(i=>{const key=`${i.collectionId}|${String(i.name).trim().toLowerCase()}`;if(seen.has(key))return;seen.add(key);const match=state.items.filter(x=>`${x.collectionId}|${String(x.name).trim().toLowerCase()}`===key),units=match.reduce((a,x)=>a+qty(x),0);if(units>1)groups.push({name:i.name,collection:collectionFor(i.collectionId),entries:match.length,units})});openModal(`${modalHead('👯 Duplicate Tracker')}${groups.length?groups.map(g=>`<div class="duplicate-card"><b>${esc(g.name)}</b><div class="tiny">${esc(g.collection?.name||'')} · ${g.units} total · ${g.entries} entr${g.entries===1?'y':'ies'}</div></div>`).join(''):`<div class="empty"><div class="empty-art">✨</div><h3>No duplicates found</h3><p>Mochi will flag repeated names and quantities here.</p></div>`}`)}
+function openMysterySummary(){const pulls=state.items.filter(i=>i.mysteryPull||i.mysterySeries);const groups={};pulls.forEach(i=>{const k=i.mysterySeries||'Unsorted Mystery Pulls';(groups[k]??=[]).push(i)});openModal(`${modalHead('🎁 Mystery Pull Tracker')}${Object.keys(groups).length?Object.entries(groups).map(([name,items])=>{const units=items.reduce((a,i)=>a+qty(i),0),dups=items.filter(i=>qty(i)>1||duplicateMatches(i,i.id).length).length;return `<div class="mystery-series"><div class="row-between"><b>${esc(name)}</b><span class="tiny muted">${units} pulls</span></div><div class="tiny muted">${dups} duplicate entr${dups===1?'y':'ies'}</div><div class="set-strip" style="margin-top:9px">${items.map(i=>`<button class="set-slot" data-mystery-item="${i.id}">${coverOf(i)?`<img src="${coverOf(i)}" alt="">`:esc(collectionFor(i.collectionId)?.emoji||'🎁')}<span class="slot-label">${esc(i.name)}</span></button>`).join('')}</div></div>`}).join(''):`<div class="empty"><div class="empty-art">🎁</div><h3>No mystery pulls yet</h3><p>Mark an item as a Mystery Pull and give it a series name.</p></div>`}`);$$('[data-mystery-item]').forEach(b=>b.onclick=()=>openItemDetail(b.dataset.mysteryItem))}
+function openStats(){const units=ownedItems().reduce((a,i)=>a+qty(i),0),value=ownedItems().reduce((a,i)=>a+Number(i.estimatedValue||0)*qty(i),0),spent=totalSpent(ownedItems()),topTag=Object.entries(state.items.flatMap(tagsOf).reduce((a,t)=>(a[t]=(a[t]||0)+1,a),{})).sort((a,b)=>b[1]-a[1])[0];openModal(`${modalHead('📊 Collection Stats')}<div class="stats-list"><div class="stats-chip"><b>${units}</b><span>owned units</span></div><div class="stats-chip"><b>${state.collections.length}</b><span>collections</span></div><div class="stats-chip"><b>${money(spent)}</b><span>total spent</span></div><div class="stats-chip"><b>${money(value)}</b><span>estimated value</span></div><div class="stats-chip"><b>${wishlistItems().length}</b><span>wishlist entries</span></div><div class="stats-chip"><b>${topTag?`#${esc(topTag[0])}`:'—'}</b><span>top tag</span></div></div>`)}
 
-function budgetPanel(full=false){
-  const budget=Number(state.settings.monthlyBudget||0); if(!budget&&!full) return '';
-  const spent=monthSpent(); const pct=budget?Math.min(100,Math.round(spent/budget*100)):0;
-  return `<section class="section ${full?'panel':''}"><div class="section-head"><h2 class="section-title">Monthly Collection Budget</h2>${full?`<button class="link-btn" data-action="settings">edit</button>`:''}</div>${budget?`<div class="progress-track"><div class="progress-bar" style="width:${pct}%"></div></div><div style="display:flex;justify-content:space-between;margin-top:7px" class="tiny muted"><span>${money(spent)} spent</span><span>${money(budget)} budget</span></div>`:`<div class="tiny muted">Set a monthly budget in Settings if you want Mochi to keep an eye on your collecting spend.</div>`}</section>`;
-}
+function exportJSON(){const data={app:'Mochi',version:2,exportedAt:new Date().toISOString(),collections:state.collections,items:state.items,settings:state.settings};downloadBlob(JSON.stringify(data,null,2),'mochi-backup.json','application/json')}
+function exportCSV(){const headers=['Name','Collection','Status','Quantity','Series','Character','Price Paid','Estimated Value','Target Price','Date Acquired','Store','Condition','Priority','Tags','Set Slot','Mystery Series','Notes'];const rows=state.items.map(i=>[i.name,collectionFor(i.collectionId)?.name||'',i.status,qty(i),i.series||'',i.character||'',i.pricePaid||'',i.estimatedValue||'',i.targetPrice||'',i.dateAcquired||'',i.store||'',i.condition||'',i.priority||'',tagsOf(i).join('|'),i.setSlot||'',i.mysterySeries||'',i.notes||'']);const csv=[headers,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');downloadBlob(csv,'mochi-items.csv','text/csv;charset=utf-8')}
+function downloadBlob(content,name,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+async function importBackup(file){try{const data=JSON.parse(await file.text());if(!Array.isArray(data.collections)||!Array.isArray(data.items))throw new Error('Invalid backup');if(!confirm('Importing will replace the current Mochi data on this device. Continue?'))return;await storeClear(STORES.collections);await storeClear(STORES.items);await storeClear(STORES.settings);for(const c of data.collections)await storePut(STORES.collections,c);for(const i of data.items)await storePut(STORES.items,i);for(const [key,value] of Object.entries(data.settings||{}))await storePut(STORES.settings,{key,value});await loadData();render();showToast('Mochi backup restored ♡','success')}catch(e){showToast('That file does not look like a Mochi backup.','error')}}
+function showToast(msg,type=''){const el=document.createElement('div');el.className=`toast ${type}`;el.textContent=msg;$('#toastRoot').appendChild(el);setTimeout(()=>el.remove(),2800)}
 
-function bindDynamicEvents(){
-  $$('[data-route-link]').forEach(b=>b.onclick=()=>{ state.query=''; state.filterStatus='All'; setRoute(b.dataset.routeLink); });
-  $$('[data-collection-id]').forEach(b=>b.onclick=()=>{ state.query=''; state.filterStatus='All'; setRoute('collection',{collectionId:b.dataset.collectionId}); });
-  $$('[data-item-id]').forEach(b=>b.onclick=()=>openItemDetail(b.dataset.itemId));
-  $$('[data-action]').forEach(b=>b.onclick=()=>handleAction(b.dataset.action,b));
-  $$('[data-status-filter]').forEach(b=>b.onclick=()=>{state.filterStatus=b.dataset.statusFilter;render();});
-  const cs=$('#collectionSearch'); if(cs) cs.oninput=e=>{state.query=e.target.value; render();};
-  const is=$('#itemSearch'); if(is) is.oninput=e=>{state.query=e.target.value; render();};
-  const sort=$('#sortSelect'); if(sort) sort.onchange=e=>{state.sort=e.target.value;render();};
-}
+function openGlobalSearch(){openModal(`${modalHead('Search Mochi')}<div class="searchbar" style="margin-top:13px"><span>⌕</span><input id="globalSearch" autofocus placeholder="Search names, series, characters, tags, stores…"></div><div id="searchResults" style="margin-top:12px"></div>`);const input=$('#globalSearch'),out=$('#searchResults');const run=()=>{const q=input.value.trim().toLowerCase();if(!q){out.innerHTML='<div class="tiny muted">Start typing to search your collection.</div>';return}const items=state.items.filter(i=>[i.name,i.series,i.character,i.store,i.notes,tagsOf(i).join(' '),...Object.values(i.customFields||{})].join(' ').toLowerCase().includes(q)).slice(0,30);out.innerHTML=items.length?items.map(i=>`<button class="list-card" data-search-item="${i.id}">${coverOf(i)?`<img class="list-thumb" src="${coverOf(i)}" alt="">`:`<span class="list-thumb placeholder">${esc(collectionFor(i.collectionId)?.emoji||'🍡')}</span>`}<span class="list-info"><span class="list-title">${esc(i.name)}</span><span class="list-sub">${esc(collectionFor(i.collectionId)?.name||'')}</span></span></button>`).join(''):'<div class="empty"><p>No matching items.</p></div>';$$('[data-search-item]').forEach(b=>b.onclick=()=>openItemDetail(b.dataset.searchItem))};input.oninput=run;setTimeout(()=>input.focus(),80)}
 
-function handleAction(action, el){
-  if(action==='add-collection') openCollectionForm();
-  if(action==='add-item') openItemForm(null, el?.dataset.defaultCollection || state.collectionId || '');
-  if(action==='add-wishlist') openItemForm(null,'','Wishlist');
-  if(action==='collection-menu') openCollectionMenu();
-  if(action==='toggle-hunt'){ saveSetting('huntMode',!state.settings.huntMode).then(render); }
-  if(action==='settings') openSettings();
-  if(action==='random-treasure') randomTreasure();
-  if(action==='mystery-summary') openMysterySummary();
-  if(action==='export-json') exportJSON();
-  if(action==='export-csv') exportCSV();
-  if(action==='import-json') $('#importInput').click();
-  if(action==='about-build') showToast('Mochi Build 1 • local-first • no account required ♡','success');
-}
-
-function openModal(html){
-  $('#modalRoot').innerHTML=`<div class="modal-backdrop" id="modalBackdrop"><section class="modal"><div class="modal-handle"></div>${html}</section></div>`;
-  $('#modalBackdrop').addEventListener('click',e=>{ if(e.target.id==='modalBackdrop') closeModal(); });
-  $$('[data-close-modal]').forEach(b=>b.onclick=closeModal);
-}
-function closeModal(){ $('#modalRoot').innerHTML=''; }
-function modalHead(title){ return `<div class="modal-head"><h2 class="modal-title">${title}</h2><button class="close-btn" data-close-modal type="button">×</button></div>`; }
-
-function openCollectionForm(existing=null){
-  const c=existing||{name:'',emoji:'🍡',description:'',setTotal:''};
-  openModal(`${modalHead(existing?'Edit Collection':'New Collection')}<form id="collectionForm" class="form-grid">
-    <div class="field"><label>Name *</label><input name="name" maxlength="60" required value="${esc(c.name)}" placeholder="e.g. Photocards"></div>
-    <div class="field-row"><div class="field"><label>Icon</label><select name="emoji">${EMOJIS.map(e=>`<option ${e===c.emoji?'selected':''}>${e}</option>`).join('')}</select></div><div class="field"><label>Set total (optional)</label><input name="setTotal" type="number" min="0" step="1" value="${esc(c.setTotal||'')}" placeholder="e.g. 12"></div></div>
-    <div class="field"><label>Description</label><textarea name="description" maxlength="280" placeholder="What lives in this collection?">${esc(c.description||'')}</textarea></div>
-    <div class="form-actions"><button type="button" class="soft-btn" data-close-modal>Cancel</button><button class="soft-btn primary" type="submit">Save collection</button></div>
-  </form>`);
-  $('#collectionForm').onsubmit=async e=>{
-    e.preventDefault(); const fd=new FormData(e.currentTarget); const name=fd.get('name').trim();
-    if(!name) return;
-    const duplicate=state.collections.find(x=>x.name.toLowerCase()===name.toLowerCase()&&x.id!==existing?.id);
-    if(duplicate){ showToast('You already have a collection with that name.','error'); return; }
-    const record={...(existing||{}),id:existing?.id||uid('col'),name,emoji:fd.get('emoji'),description:fd.get('description').trim(),setTotal:Number(fd.get('setTotal')||0)||'',order:existing?.order??state.collections.length,createdAt:existing?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),archived:false};
-    await storePut(STORES.collections,record); await loadData(); closeModal(); render(); showToast(existing?'Collection updated ♡':'Collection created ♡','success');
-  };
-}
-
-function itemCollectionOptions(selected=''){ return `<option value="">Choose collection</option>${state.collections.map(c=>`<option value="${c.id}" ${selected===c.id?'selected':''}>${esc(c.emoji||'🍡')} ${esc(c.name)}</option>`).join('')}`; }
-
-function openItemForm(existing=null, defaultCollection='', forcedStatus=''){
-  if(!state.collections.length){ showToast('Create a collection first so Mochi knows where to put the item.','error'); openCollectionForm(); return; }
-  const i=existing||{name:'',collectionId:defaultCollection,status:forcedStatus||'Owned',series:'',character:'',pricePaid:'',targetPrice:'',dateAcquired:todayISO(),store:'',condition:'',notes:'',tags:'',priority:'Medium',photo:'',mysteryPull:false,custom1Label:'',custom1Value:''};
-  openModal(`${modalHead(existing?'Edit Item':'Add Item')}<form id="itemForm" class="form-grid">
-    <label class="photo-picker"><input id="photoInput" type="file" accept="image/*"><div id="photoPreview">${i.photo?`<img src="${i.photo}" alt="Preview">`:`<div class="photo-copy"><b>＋</b>Add a photo<br><span class="tiny">stored locally on this device</span></div>`}</div></label>
-    <div class="field"><label>Item name *</label><input name="name" maxlength="100" required value="${esc(i.name)}" placeholder="e.g. Gojo Satoru Nendoroid"></div>
-    <div class="field-row"><div class="field"><label>Collection *</label><select name="collectionId" required>${itemCollectionOptions(i.collectionId)}</select></div><div class="field"><label>Status</label><select name="status">${STATUS.map(s=>`<option ${s===i.status?'selected':''}>${s}</option>`).join('')}</select></div></div>
-    <div class="field-row"><div class="field"><label>Series / Franchise</label><input name="series" value="${esc(i.series||'')}" placeholder="Jujutsu Kaisen"></div><div class="field"><label>Character / Subject</label><input name="character" value="${esc(i.character||'')}" placeholder="Gojo Satoru"></div></div>
-    <div class="field-row"><div class="field"><label>Price paid</label><input name="pricePaid" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(i.pricePaid||'')}"></div><div class="field"><label>Target price</label><input name="targetPrice" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(i.targetPrice||'')}"></div></div>
-    <div class="field-row"><div class="field"><label>Date acquired</label><input name="dateAcquired" type="date" value="${esc(i.dateAcquired||'')}"></div><div class="field"><label>Priority</label><select name="priority">${PRIORITIES.map(p=>`<option ${p===i.priority?'selected':''}>${p}</option>`).join('')}</select></div></div>
-    <div class="field-row"><div class="field"><label>Store / Source</label><input name="store" value="${esc(i.store||'')}" placeholder="AmiAmi"></div><div class="field"><label>Condition</label><input name="condition" value="${esc(i.condition||'')}" placeholder="Like New"></div></div>
-    <div class="field"><label>Tags</label><input name="tags" value="${esc(i.tags||'')}" placeholder="figure, japan, limited"></div>
-    <div class="field-row"><div class="field"><label>Custom field label</label><input name="custom1Label" value="${esc(i.custom1Label||'')}" placeholder="e.g. Scale"></div><div class="field"><label>Custom field value</label><input name="custom1Value" value="${esc(i.custom1Value||'')}" placeholder="e.g. 1/7"></div></div>
-    <div class="field"><label>Memory / Notes</label><textarea name="notes" placeholder="Where you found it, why you love it, little memories…">${esc(i.notes||'')}</textarea></div>
-    <label class="field" style="grid-template-columns:auto 1fr;align-items:center"><input name="mysteryPull" type="checkbox" ${i.mysteryPull?'checked':''} style="width:18px;height:18px"><span><b style="font-size:12px">Mystery Pull</b><span class="tiny muted" style="display:block">Blind box, gachapon, card pull, etc.</span></span></label>
-    <div class="form-actions"><button type="button" class="soft-btn" data-close-modal>Cancel</button><button class="soft-btn primary" type="submit">Save item</button></div>
-  </form>`);
-  let newPhoto=i.photo||'';
-  $('#photoInput').onchange=async e=>{ const f=e.target.files?.[0]; if(!f)return; try{ newPhoto=await resizeImage(f,1100,.82); $('#photoPreview').innerHTML=`<img src="${newPhoto}" alt="Preview">`; }catch{ showToast('That photo could not be read.','error'); } };
-  $('#itemForm').onsubmit=async e=>{
-    e.preventDefault(); const fd=new FormData(e.currentTarget); const name=fd.get('name').trim(); const collectionId=fd.get('collectionId');
-    const duplicate=state.items.find(x=>x.name.toLowerCase()===name.toLowerCase()&&x.collectionId===collectionId&&x.id!==existing?.id);
-    if(duplicate && !confirm(`Mochi found a possible duplicate: “${duplicate.name}”. Add it anyway?`)) return;
-    const record={...(existing||{}),id:existing?.id||uid('item'),name,collectionId,status:fd.get('status'),series:fd.get('series').trim(),character:fd.get('character').trim(),pricePaid:Number(fd.get('pricePaid')||0),targetPrice:Number(fd.get('targetPrice')||0),dateAcquired:fd.get('dateAcquired'),store:fd.get('store').trim(),condition:fd.get('condition').trim(),tags:fd.get('tags').trim(),priority:fd.get('priority'),notes:fd.get('notes').trim(),custom1Label:fd.get('custom1Label').trim(),custom1Value:fd.get('custom1Value').trim(),mysteryPull:fd.get('mysteryPull')==='on',photo:newPhoto,createdAt:existing?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),archived:false};
-    await storePut(STORES.items,record); await loadData(); closeModal(); render(); showToast(existing?'Item updated ♡':'Item added to Mochi ♡','success');
-  };
-}
-
-function resizeImage(file,max=1100,quality=.82){
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader(); reader.onerror=reject; reader.onload=()=>{
-      const img=new Image(); img.onerror=reject; img.onload=()=>{
-        const scale=Math.min(1,max/Math.max(img.width,img.height)); const w=Math.round(img.width*scale),h=Math.round(img.height*scale);
-        const canvas=document.createElement('canvas'); canvas.width=w;canvas.height=h; canvas.getContext('2d').drawImage(img,0,0,w,h);
-        resolve(canvas.toDataURL('image/jpeg',quality));
-      }; img.src=reader.result;
-    }; reader.readAsDataURL(file);
-  });
-}
-
-function openItemDetail(id){
-  const i=state.items.find(x=>x.id===id); if(!i)return;
-  const c=collectionFor(i.collectionId);
-  openModal(`${modalHead('Item Details')}${i.photo?`<img class="detail-photo" src="${i.photo}" alt="${esc(i.name)}">`:`<div class="detail-photo item-photo-placeholder">${esc(c?.emoji||'🍡')}</div>`}<h2 style="font-size:20px;margin:14px 0 2px">${esc(i.name)}</h2><div class="muted tiny">${esc(i.series||c?.name||'')}</div>
-    <div class="detail-grid">
-      ${detailRow('Status',i.status)}${detailRow('Collection',c?.name||'—')}${detailRow('Character',i.character||'—')}${detailRow('Price Paid',money(i.pricePaid||0))}${detailRow('Target Price',money(i.targetPrice||0))}${detailRow('Date Acquired',fmtDate(i.dateAcquired))}${detailRow('Store',i.store||'—')}${detailRow('Condition',i.condition||'—')}${i.custom1Label?detailRow(i.custom1Label,i.custom1Value||'—'):''}${detailRow('Priority',i.priority||'Medium')}${i.mysteryPull?detailRow('Mystery Pull','Yes 🎁'):''}
-    </div>${i.notes?`<div class="panel" style="margin-top:13px"><h3>♡ Memory / Notes</h3><div class="muted" style="font-size:12px;line-height:1.55;white-space:pre-wrap">${esc(i.notes)}</div></div>`:''}
-    <div class="detail-actions"><button class="mini-btn" id="editItemBtn">Edit</button><button class="mini-btn" id="duplicateItemBtn">Duplicate</button><button class="mini-btn danger" id="deleteItemBtn">Delete</button></div>`);
-  $('#editItemBtn').onclick=()=>{closeModal();openItemForm(i)};
-  $('#duplicateItemBtn').onclick=async()=>{ const copy={...i,id:uid('item'),name:`${i.name} Copy`,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}; await storePut(STORES.items,copy); await loadData(); closeModal(); render(); showToast('Item duplicated ♡','success'); };
-  $('#deleteItemBtn').onclick=async()=>{ if(!confirm(`Delete “${i.name}”? This cannot be undone.`))return; await storeDelete(STORES.items,i.id); await loadData(); closeModal(); render(); showToast('Item deleted.'); };
-}
-function detailRow(label,value){ return `<div class="detail-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>`; }
-
-function openCollectionMenu(){
-  const c=collectionFor(state.collectionId); if(!c)return;
-  openModal(`${modalHead(esc(c.name))}<div class="form-grid"><button class="soft-btn" id="editCollection">✎ Edit collection</button><button class="soft-btn" id="addCollectionItem">＋ Add item</button><button class="soft-btn danger" id="archiveCollection">Archive collection</button><button class="soft-btn danger" id="deleteCollection">Delete collection & its items</button></div>`);
-  $('#editCollection').onclick=()=>{closeModal();openCollectionForm(c)};
-  $('#addCollectionItem').onclick=()=>{closeModal();openItemForm(null,c.id)};
-  $('#archiveCollection').onclick=async()=>{ if(!confirm(`Archive “${c.name}”? Its items will be hidden too.`))return; await storePut(STORES.collections,{...c,archived:true}); for(const i of itemsForCollection(c.id)) await storePut(STORES.items,{...i,archived:true}); await loadData(); closeModal(); setRoute('collections'); showToast('Collection archived.'); };
-  $('#deleteCollection').onclick=async()=>{ if(!confirm(`Permanently delete “${c.name}” and all its items?`))return; for(const i of itemsForCollection(c.id)) await storeDelete(STORES.items,i.id); await storeDelete(STORES.collections,c.id); await loadData(); closeModal(); setRoute('collections'); showToast('Collection deleted.'); };
-}
-
-function openSettings(){
-  openModal(`${modalHead('Settings')}<form id="settingsForm" class="form-grid"><div class="field"><label>Your name (optional)</label><input name="displayName" maxlength="40" value="${esc(state.settings.displayName||'')}" placeholder="Used only for the greeting"></div><div class="field-row"><div class="field"><label>Currency symbol</label><input name="currency" maxlength="4" value="${esc(state.settings.currency||'₱')}"></div><div class="field"><label>Monthly budget</label><input name="monthlyBudget" type="number" min="0" step="0.01" value="${esc(state.settings.monthlyBudget||'')}"></div></div><div class="form-actions"><button type="button" class="soft-btn" data-close-modal>Cancel</button><button class="soft-btn primary" type="submit">Save</button></div></form><div class="panel" style="margin-top:18px"><h3>Data</h3><button class="soft-btn danger" id="eraseAllBtn" style="width:100%">Erase all Mochi data</button><div class="tiny muted" style="margin-top:8px">Mochi Build 1 stores your collections locally in this browser/device. Use Backup JSON before clearing browser data or moving devices.</div></div>`);
-  $('#settingsForm').onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);await saveSetting('displayName',fd.get('displayName').trim());await saveSetting('currency',fd.get('currency').trim()||'₱');await saveSetting('monthlyBudget',Number(fd.get('monthlyBudget')||0));closeModal();render();showToast('Settings saved ♡','success');};
-  $('#eraseAllBtn').onclick=async()=>{if(!confirm('Erase every collection, item, and setting from Mochi on this device?'))return; if(!confirm('Final check: this cannot be undone unless you have a backup.'))return; await Promise.all([storeClear(STORES.collections),storeClear(STORES.items),storeClear(STORES.settings)]); state.settings={displayName:'',monthlyBudget:0,currency:'₱',huntMode:false}; await loadData();closeModal();setRoute('home');showToast('Mochi has been reset.');};
-}
-
-function randomTreasure(){
-  const pool=ownedItems(); if(!pool.length){showToast('Add an owned item first, then Mochi can surprise you.','error');return;} const i=pool[Math.floor(Math.random()*pool.length)]; openItemDetail(i.id);
-}
-function openMysterySummary(){
-  const pulls=state.items.filter(i=>i.mysteryPull);
-  openModal(`${modalHead('🎁 Mystery Pull Tracker')}${pulls.length?`<div class="panel"><h3>${pulls.length} pulls logged</h3><div class="tiny muted">Mark an item as “Mystery Pull” when adding or editing it.</div></div>${pulls.map(i=>`<button class="list-card mystery-open" data-id="${i.id}" style="width:100%;text-align:left"><span class="list-thumb placeholder">${esc(collectionFor(i.collectionId)?.emoji||'🎁')}</span><span class="list-info"><span class="list-title">${esc(i.name)}</span><span class="list-sub">${esc(collectionFor(i.collectionId)?.name||'')}</span></span></button>`).join('')}`:`<div class="empty"><div class="empty-art">🎁</div><h3>No mystery pulls yet</h3><p>Edit or add an item and turn on “Mystery Pull” for blind boxes, gachapon, cards, or random merch.</p></div>`}`);
-  $$('.mystery-open').forEach(b=>b.onclick=()=>{closeModal();openItemDetail(b.dataset.id)});
-}
-
-function downloadBlob(filename,content,type){ const blob=new Blob([content],{type}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),800); }
-function exportJSON(){
-  const payload={app:'Mochi',version:1,exportedAt:new Date().toISOString(),collections:state.collections,items:state.items,settings:state.settings}; downloadBlob(`mochi-backup-${todayISO()}.json`,JSON.stringify(payload,null,2),'application/json'); showToast('Backup downloaded ♡','success');
-}
-function csvCell(v){ const s=String(v??''); return `"${s.replace(/"/g,'""')}"`; }
-function exportCSV(){
-  const headers=['Name','Collection','Status','Series','Character','Price Paid','Target Price','Date Acquired','Store','Condition','Priority','Tags','Notes','Mystery Pull'];
-  const rows=state.items.map(i=>[i.name,collectionFor(i.collectionId)?.name||'',i.status,i.series,i.character,i.pricePaid,i.targetPrice,i.dateAcquired,i.store,i.condition,i.priority,i.tags,i.notes,i.mysteryPull?'Yes':'No']);
-  const csv=[headers,...rows].map(r=>r.map(csvCell).join(',')).join('\r\n'); downloadBlob(`mochi-items-${todayISO()}.csv`,`\uFEFF${csv}`,'text/csv;charset=utf-8'); showToast('CSV exported ♡','success');
-}
-
-async function importJSONFile(file){
-  try{
-    const parsed=JSON.parse(await file.text()); if(parsed.app!=='Mochi'||!Array.isArray(parsed.collections)||!Array.isArray(parsed.items)) throw new Error('Invalid backup');
-    if(!confirm(`Import ${parsed.collections.length} collections and ${parsed.items.length} items? Existing records with the same IDs will be replaced.`))return;
-    for(const c of parsed.collections) await storePut(STORES.collections,c);
-    for(const i of parsed.items) await storePut(STORES.items,i);
-    for(const [key,value] of Object.entries(parsed.settings||{})) await storePut(STORES.settings,{key,value});
-    await loadData(); render(); showToast('Backup restored ♡','success');
-  }catch(err){ console.error(err); showToast('That file is not a valid Mochi backup.','error'); }
-}
-
-function showToast(msg,type=''){
-  const t=document.createElement('div');t.className=`toast ${type}`;t.textContent=msg;$('#toastRoot').appendChild(t);setTimeout(()=>t.remove(),2600);
-}
-
-function globalSearch(){
-  openModal(`${modalHead('Search Mochi')}<div class="searchbar" style="margin-top:15px"><span>⌕</span><input id="globalSearchInput" autofocus placeholder="Search items, series, characters, tags…"></div><div id="globalSearchResults" style="margin-top:12px"></div>`);
-  const input=$('#globalSearchInput'), results=$('#globalSearchResults');
-  const run=()=>{const q=input.value.trim().toLowerCase();if(!q){results.innerHTML='<div class="tiny muted" style="padding:10px">Start typing to search your whole collection.</div>';return;} const matches=state.items.filter(i=>`${i.name} ${i.series||''} ${i.character||''} ${i.tags||''} ${collectionFor(i.collectionId)?.name||''}`.toLowerCase().includes(q)).slice(0,30);results.innerHTML=matches.length?matches.map(i=>`<button class="list-card search-result" data-id="${i.id}" style="width:100%;text-align:left"><span class="list-thumb placeholder">${esc(collectionFor(i.collectionId)?.emoji||'🍡')}</span><span class="list-info"><span class="list-title">${esc(i.name)}</span><span class="list-sub">${esc(collectionFor(i.collectionId)?.name||'')}</span></span></button>`).join(''):'<div class="empty"><div class="empty-art">⌕</div><h3>No matches</h3><p>Try another name, character, series, tag, or collection.</p></div>'; $$('.search-result').forEach(b=>b.onclick=()=>{closeModal();openItemDetail(b.dataset.id)});};
-  input.oninput=run;run();setTimeout(()=>input.focus(),80);
-}
-
-async function init(){
-  await loadData();
-  updateGreeting(); render();
-  $$('.nav-btn').forEach(b=>b.onclick=()=>{state.query='';state.filterStatus='All';setRoute(b.dataset.route)});
-  $('#quickAddBtn').onclick=()=>openItemForm(null,state.collectionId||'');
-  $('#openSearchBtn').onclick=globalSearch;
-  $('#importInput').onchange=e=>{const f=e.target.files?.[0];if(f)importJSONFile(f);e.target.value='';};
-  if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error)); }
-}
-
-document.addEventListener('DOMContentLoaded',()=>init().catch(err=>{console.error(err);document.body.innerHTML='<main style="padding:24px;font-family:sans-serif"><h1>Mochi could not start</h1><p>Please refresh the page. If the problem continues, clear this site’s storage and try again.</p></main>';}));
+async function init(){try{await loadData();render();if('serviceWorker'in navigator)navigator.serviceWorker.register('./service-worker.js').catch(()=>{});$('.nav-btn[data-route="home"]').onclick=()=>setRoute('home');$$('.nav-btn').forEach(b=>b.onclick=()=>setRoute(b.dataset.route));$('#quickAddBtn').onclick=()=>openItemForm();$('#openSearchBtn').onclick=openGlobalSearch;$('#importInput').onchange=e=>{const f=e.target.files[0];if(f)importBackup(f);e.target.value=''};}catch(e){console.error(e);$('#mainContent').innerHTML='<div class="empty"><div class="empty-art">🍡</div><h3>Mochi had trouble opening</h3><p>Refresh the page. Your browser may have blocked local storage.</p></div>'}}
+document.addEventListener('DOMContentLoaded',init);
