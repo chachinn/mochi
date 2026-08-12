@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mochi-build5-v1-production';
+const CACHE_NAME = 'mochi-build5-v2-balanced-nav';
 const APP_SHELL = [
   './','./index.html','./style.css','./app.js','./manifest.json',
   './icon/icon-192.png','./icon/icon-512.png'
