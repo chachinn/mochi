@@ -12,7 +12,7 @@
   <link rel="icon" href="icon/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="icon/icon-192.png" />
   <link rel="stylesheet" href="style.css" />
-  <title>Mochi — Collection Tracker · Build 4</title>
+  <title>Mochi — Collection Tracker · Build 4.1</title>
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -39,7 +39,7 @@
   <div id="toastRoot" class="toast-root" aria-live="assertive"></div>
   <input id="importInput" type="file" accept="application/json" hidden />
   <input id="csvImportInput" type="file" accept="text/csv,.csv" hidden />
-  <div id="updateBanner" class="update-banner hidden" role="status"><span><b>New Mochi update ready</b><small>Reload to use the latest version.</small></span><button id="applyUpdateBtn" type="button">Update</button></div>
+  <div id="updateBanner" class="update-banner hidden" role="status" aria-live="polite"><span><b>A Mochi update is available.</b><small>Refresh to update.</small></span><button id="applyUpdateBtn" type="button">Update</button></div>
   <script src="app.js" defer></script>
 </body>
 </html>

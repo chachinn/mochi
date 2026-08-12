@@ -50,3 +50,22 @@ button,.item-card,.collection-card,.smart-card{transition:transform .12s ease,bo
 .status-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:999px;background:var(--surface2);font-size:9px;font-weight:900}.status-dot{width:7px;height:7px;border-radius:50%;background:#6eaa65}.status-dot.offline{background:#d88763}
 .validation-note{font-size:9px;color:var(--muted);line-height:1.4}.error-note{font-size:9px;color:#b45464;font-weight:800}
 .skeleton{position:relative;overflow:hidden;background:var(--surface2);border-radius:14px}.skeleton:after{content:'';position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);animation:mochiShimmer 1.2s infinite}@keyframes mochiShimmer{100%{transform:translateX(100%)}}
+
+
+/* ===== Mochi Build 4.1 — About, welcome & update notice ===== */
+.update-banner{background:rgba(255,255,255,.97);color:var(--ink);border:1px solid var(--line);box-shadow:0 14px 40px rgba(78,54,48,.14);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.update-banner b{font-size:12px}.update-banner small{font-size:10px;opacity:.68}
+.update-banner button{background:var(--pink-soft);color:var(--pink-deep);border:1px solid color-mix(in srgb,var(--pink) 45%,transparent);min-width:82px;font-size:12px}
+.about-mochi-card{position:relative;overflow:hidden;background:linear-gradient(145deg,var(--pink-soft),var(--surface),var(--yellow))}
+.about-mochi-card:after{content:'餅';position:absolute;right:14px;top:6px;font-size:70px;font-weight:900;opacity:.055;pointer-events:none}
+.about-mochi-copy{font-size:12px;line-height:1.65;color:var(--muted);max-width:92%}
+.about-mochi-copy strong{color:var(--ink)}
+.about-mochi-button{width:100%;margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;border-radius:15px;background:rgba(255,255,255,.7);border:1px solid var(--line);text-align:left}
+.about-mochi-button b{font-size:12px}.about-mochi-button small{display:block;color:var(--muted);font-size:9px;margin-top:2px}
+.welcome-mochi{padding:4px 1px 2px;text-align:center}
+.welcome-daifuku{width:112px;height:112px;border-radius:28px;margin:2px auto 14px;display:block;object-fit:cover;box-shadow:0 12px 30px rgba(231,102,126,.16)}
+.welcome-kicker{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--pink-deep);font-weight:900}
+.welcome-title{font-size:27px;line-height:1.1;margin:7px 0 11px;letter-spacing:-.02em}
+.welcome-copy{font-size:12px;line-height:1.7;color:var(--muted);margin:0 auto 17px;max-width:310px}
+.welcome-copy strong{color:var(--ink)}
+.welcome-note{display:flex;align-items:center;gap:9px;text-align:left;padding:11px 12px;border-radius:15px;background:var(--surface2);font-size:10px;color:var(--muted);margin-bottom:13px}

@@ -398,3 +398,45 @@ document.addEventListener('DOMContentLoaded',()=>{
   // One lightweight daily snapshot; avoids cloning the database on every small edit.
   setTimeout(async()=>{const day=todayISO();if(state.settings.lastAutoBackupDay!==day){await saveAutoBackup('Daily automatic snapshot');await saveSetting('lastAutoBackupDay',day)}},1200);
 });
+
+
+/* ========================================================================== */
+/* Mochi Build 4.1 — About Mochi, first-open welcome & Sakura-style updates   */
+/* ========================================================================== */
+const MOCHI_ABOUT_TEXT = 'Mochi (餅) is the soft Japanese rice cake. Small, cute, and made in endless varieties—much like the things we love to collect. Mochi gives all those little treasures a place of their own.';
+
+function openAboutMochi(){
+  openModal(`${modalHead('About Mochi')}<div class="welcome-mochi"><img class="welcome-daifuku" src="icon/icon-512.png" alt="Mochi strawberry daifuku icon"><div class="welcome-kicker">Mochi · 餅</div><h2 class="welcome-title">A little home for little treasures.</h2><p class="welcome-copy"><strong>Mochi (餅)</strong> is the soft Japanese rice cake. Small, cute, and made in endless varieties—much like the things we love to collect. Mochi gives all those little treasures a place of their own.</p><div class="welcome-note"><span>🍓</span><span>Your collection stays local on this device unless you choose to export or back it up.</span></div><button class="soft-btn primary" style="width:100%" data-close-modal type="button">Close</button></div>`);
+  $$('[data-close-modal]').forEach(b=>b.onclick=closeModal);
+}
+
+function openMochiWelcome(){
+  openModal(`<div class="welcome-mochi"><img class="welcome-daifuku" src="icon/icon-512.png" alt="Mochi strawberry daifuku icon"><div class="welcome-kicker">Welcome to Mochi · 餅</div><h2 class="welcome-title">Your little collection keeper ♡</h2><p class="welcome-copy"><strong>Mochi (餅)</strong> is the soft Japanese rice cake. Small, cute, and made in endless varieties—much like the things we love to collect. Mochi gives all those little treasures a place of their own.</p><div class="welcome-note"><span>🍡</span><span>Create collections, keep photos and memories, track wishlists and sets, and watch your shelves grow.</span></div><button id="mochiWelcomeContinue" class="soft-btn primary" style="width:100%" type="button">Start collecting</button></div>`);
+  const btn=$('#mochiWelcomeContinue');
+  if(btn)btn.onclick=async()=>{await saveSetting('mochiWelcomeSeen',true);closeModal();showToast('Welcome to Mochi ♡','success')};
+}
+
+const renderMeBuild41Base = renderMe;
+renderMe = function(){
+  return `${renderMeBuild41Base()}<section class="section"><div class="section-head"><h2 class="section-title">About</h2></div><section class="panel about-mochi-card"><h3>🍓 Mochi · 餅</h3><p class="about-mochi-copy"><strong>Mochi (餅)</strong> is the soft Japanese rice cake. Small, cute, and made in endless varieties—much like the things we love to collect. Mochi gives all those little treasures a place of their own.</p><button class="about-mochi-button" data-action="about-mochi" type="button"><span><b>About Mochi</b><small>The story behind the name</small></span><span>›</span></button></section></section>`;
+};
+
+const handleActionBuild41Base = handleAction;
+handleAction = async function(action,el){
+  if(action==='about-mochi')return openAboutMochi();
+  return handleActionBuild41Base(action,el);
+};
+
+// Show the story once on the first launch after this feature is introduced.
+document.addEventListener('DOMContentLoaded',()=>{
+  setTimeout(async()=>{
+    try{
+      if(!state.settings.mochiWelcomeSeen){
+        // State is normally loaded by init already; refresh settings once if startup was slow.
+        const settings=await storeGetAll(STORES.settings);
+        settings.forEach(r=>state.settings[r.key]=r.value);
+        if(!state.settings.mochiWelcomeSeen)openMochiWelcome();
+      }
+    }catch(e){console.warn('Mochi welcome skipped',e)}
+  },700);
+});
