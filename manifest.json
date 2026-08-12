@@ -1,7 +1,7 @@
 {
   "name": "Mochi — Collection Tracker",
   "short_name": "Mochi",
-  "description": "A cute offline-first collection tracker with quick add, smart collections, favorites, memories, stats, budgets, themes and Mochi Wrapped.",
+  "description": "A polished offline-first collection tracker for collections, wishlists, sets, memories, inventory locations, lending, care reminders, goals, backups, statistics and more.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
