@@ -1,6 +1,6 @@
-const CACHE_NAME = 'mochi-build5-v2-balanced-nav';
+const CACHE_NAME = 'mochi-build5-v3-tomodachi-height';
 const APP_SHELL = [
-  './','./index.html','./style.css','./app.js','./manifest.json',
+  './','./index.html','./style.css','./tomodachi.css','./app.js','./tomodachi.js','./manifest.json',
   './icon/icon-192.png','./icon/icon-512.png'
 ];
 
