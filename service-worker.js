@@ -1,5 +1,5 @@
-const CACHE_NAME = 'mochi-build6-v1-games-hub';
-const APP_SHELL = ['./','./index.html','./style.css','./games.css','./tomodachi.css','./genshin.css','./app.js','./games.js','./tomodachi.js','./genshin.js','./manifest.json','./icon/icon-192.png','./icon/icon-512.png'];
+const CACHE_NAME = 'mochi-build6-v2-tomodachi-native-tools';
+const APP_SHELL = ['./','./index.html','./style.css','./games.css','./tomodachi.css','./tomodachi-presets.css','./genshin.css','./app.js','./games.js','./tomodachi.js','./tomodachi-presets.js','./genshin.js','./manifest.json','./icon/icon-192.png','./icon/icon-512.png'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(APP_SHELL)));});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE_NAME).map(k=>caches.delete(k)))));self.clients.claim();});
 self.addEventListener('message',event=>{if(event.data&&event.data.type==='SKIP_WAITING')self.skipWaiting();});
