@@ -1,8 +1,8 @@
 const CACHE_PREFIX = 'mochi-';
-const CACHE_NAME = 'mochi-internal-build6-v5-qa-hardening';
+const CACHE_NAME = 'mochi-internal-build6-v6-full-qa';
 const APP_SHELL = [
   './','./index.html','./style.css','./games.css','./tomodachi.css','./tomodachi-presets.css','./genshin.css',
-  './app.js','./tomodachi.js','./tomodachi-presets.js','./genshin.js','./games.js','./manifest.json',
+  './app.js','./tomodachi.js','./tomodachi-presets.js','./genshin.js','./games.js','./qa-runtime.js','./manifest.json',
   './icon/icon-192.png','./icon/icon-512.png'
 ];
 
