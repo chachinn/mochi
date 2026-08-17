@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'mochi-';
-const CACHE_NAME = 'mochi-internal-build6-v8-xlsx-import';
+const CACHE_NAME = 'mochi-internal-build6-v9-games-freeze-fix';
 const EXCEL_LIB_URL = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js';
 const APP_SHELL = [
   './','./index.html','./style.css','./games.css','./tomodachi.css','./tomodachi-presets.css','./genshin.css',
@@ -11,10 +11,8 @@ self.addEventListener('install', event => {
   event.waitUntil((async()=>{
     const cache=await caches.open(CACHE_NAME);
     await cache.addAll(APP_SHELL);
-    /* Excel support is optional to installation: cache it when reachable, but never block Mochi updates if the CDN is temporarily unavailable. */
     try{await cache.add(EXCEL_LIB_URL)}catch{}
   })());
-  // Intentionally wait so Mochi can show its user-facing update prompt.
 });
 
 self.addEventListener('activate', event => {
@@ -63,7 +61,6 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Stale-while-revalidate keeps startup fast/offline while refreshing local assets in the background.
   event.respondWith(
     caches.match(event.request).then(cached => {
       const network = fetch(event.request).then(response => {
