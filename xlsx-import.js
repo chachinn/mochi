@@ -101,11 +101,17 @@ document.addEventListener('change',e=>{
   importXlsx(file,c).finally(()=>{input.value=''});
 },true);
 
-/* Keep the visible action accurate after every render. */
-const relabel=()=>{const b=$('#genshinImportBtn');if(b)b.textContent='⇩ Import Excel / CSV'};
+/* Keep the label accurate without creating a MutationObserver feedback loop. */
+const IMPORT_LABEL='⇩ Import Excel / CSV';
+const relabel=()=>{
+  const b=$('#genshinImportBtn');
+  if(b&&b.textContent!==IMPORT_LABEL)b.textContent=IMPORT_LABEL;
+};
 document.addEventListener('DOMContentLoaded',()=>{
   relabel();
-  new MutationObserver(relabel).observe($('#app')||document.body,{subtree:true,childList:true});
+  const app=$('#app')||document.body;
+  const observer=new MutationObserver(()=>relabel());
+  observer.observe(app,{subtree:true,childList:true});
 });
 
 window.MochiExcelImport={importXlsx,excelResult};
