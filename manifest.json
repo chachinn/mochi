@@ -1,7 +1,7 @@
 {
   "name": "Mochi — Collection Tracker",
   "short_name": "Mochi",
-  "description": "A polished offline-first collection tracker for collections, wishlists, sets, memories, inventory locations, lending, care reminders, goals, backups, statistics and more.",
+  "description": "A polished offline-first tracker for physical collections and optional game rosters, with wishlists, sets, memories, custom fields, backups, statistics and specialized game tools.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
