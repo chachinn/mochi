@@ -1,9 +1,9 @@
 const CACHE_PREFIX = 'mochi-';
-const CACHE_NAME = 'mochi-internal-build6-v9-games-freeze-fix';
+const CACHE_NAME = 'mochi-internal-build6-v10-game-table-view';
 const EXCEL_LIB_URL = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js';
 const APP_SHELL = [
-  './','./index.html','./style.css','./games.css','./tomodachi.css','./tomodachi-presets.css','./genshin.css',
-  './app.js','./tomodachi.js','./tomodachi-presets.js','./genshin.js','./games.js','./xlsx-import.js','./qa-runtime.js','./manifest.json',
+  './','./index.html','./style.css','./games.css','./game-table-view.css','./tomodachi.css','./tomodachi-presets.css','./genshin.css',
+  './app.js','./tomodachi.js','./tomodachi-presets.js','./genshin.js','./games.js','./xlsx-import.js','./game-table-view.js','./qa-runtime.js','./manifest.json',
   './icon/icon-192.png','./icon/icon-512.png'
 ];
 
@@ -64,7 +64,7 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request).then(cached => {
       const network = fetch(event.request).then(response => {
-        if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+        if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(event.request,response.clone()));
         return response;
       }).catch(() => cached);
       return cached || network;
