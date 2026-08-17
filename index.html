@@ -1,4 +1,64 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no" /><meta name="theme-color" content="#fff8f5" /><meta name="apple-mobile-web-app-capable" content="yes" /><meta name="apple-mobile-web-app-status-bar-style" content="default" /><meta name="apple-mobile-web-app-title" content="Mochi" /><meta name="format-detection" content="telephone=no" /><link rel="manifest" href="manifest.json" /><link rel="icon" href="icon/icon-192.png" sizes="192x192" /><link rel="apple-touch-icon" href="icon/icon-192.png" /><link rel="stylesheet" href="style.css" /><link rel="stylesheet" href="tomodachi.css" /><link rel="stylesheet" href="tomodachi-presets.css" /><link rel="stylesheet" href="genshin.css" /><link rel="stylesheet" href="games.css" /><title>Mochi — Collection Tracker</title></head><body>
-<div id="app" class="app-shell"><header class="topbar production-topbar"><button id="openMenuBtn" class="icon-btn topbar-menu-btn" type="button" aria-label="Open menu">☰</button><div class="topbar-brand"><div class="brand-row"><h1 class="brand">Mochi</h1><span class="dango" aria-hidden="true"><i></i><i></i><i></i></span></div><p id="greeting" class="greeting">your little collection keeper ♡</p></div><button id="openSearchBtn" class="icon-btn" type="button" aria-label="Search">⌕</button></header><main id="mainContent" class="main-content" aria-live="polite"></main><nav class="bottom-nav compact-bottom-nav" aria-label="Main navigation"><button class="nav-btn active" data-route="home" type="button"><span>⌂</span><small>Home</small></button><button class="nav-btn" data-route="collections" type="button"><span>▣</span><small>Collections</small></button><button id="quickAddBtn" class="nav-add" type="button" aria-label="Add">＋</button><button class="nav-btn" data-route="games" type="button"><span>♜</span><small>Games</small></button><button class="nav-btn" data-route="me" type="button"><span>♙</span><small>Me</small></button></nav></div>
-<aside id="menuDrawer" class="menu-drawer" aria-hidden="true"></aside><div id="drawerScrim" class="drawer-scrim hidden" aria-hidden="true"></div><div id="modalRoot"></div><div id="toastRoot" class="toast-root" aria-live="assertive"></div><input id="importInput" type="file" accept="application/json" hidden /><input id="csvImportInput" type="file" accept="text/csv,.csv" hidden /><input id="genshinImportInput" type="file" accept="text/csv,.csv" hidden /><div id="updateBanner" class="update-banner hidden" role="status" aria-live="polite"><span><b>A Mochi update is available.</b><small>Refresh to update.</small></span><button id="applyUpdateBtn" type="button">Update</button></div><script src="app.js" defer></script><script src="games.js" defer></script><script src="tomodachi.js" defer></script><script src="tomodachi-presets.js" defer></script><script src="genshin.js" defer></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no" />
+  <meta name="theme-color" content="#fff8f5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Mochi" />
+  <meta name="format-detection" content="telephone=no" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon/icon-192.png" sizes="192x192" />
+  <link rel="apple-touch-icon" href="icon/icon-192.png" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="tomodachi.css" />
+  <link rel="stylesheet" href="tomodachi-presets.css" />
+  <link rel="stylesheet" href="genshin.css" />
+  <link rel="stylesheet" href="games.css" />
+  <title>Mochi — Collection Tracker</title>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar production-topbar">
+      <button id="openMenuBtn" class="icon-btn topbar-menu-btn" type="button" aria-label="Open menu">☰</button>
+      <div class="topbar-brand">
+        <div class="brand-row"><h1 class="brand">Mochi</h1><span class="dango" aria-hidden="true"><i></i><i></i><i></i></span></div>
+        <p id="greeting" class="greeting">your little collection keeper ♡</p>
+      </div>
+      <button id="openSearchBtn" class="icon-btn" type="button" aria-label="Search">⌕</button>
+    </header>
+
+    <main id="mainContent" class="main-content" aria-live="polite"></main>
+
+    <nav class="bottom-nav compact-bottom-nav" aria-label="Main navigation">
+      <button class="nav-btn active" data-route="home" type="button"><span>⌂</span><small>Home</small></button>
+      <button class="nav-btn" data-route="collections" type="button"><span>▣</span><small>Collections</small></button>
+      <button id="quickAddBtn" class="nav-add" type="button" aria-label="Add">＋</button>
+      <button class="nav-btn" data-route="games" type="button"><span>♜</span><small>Games</small></button>
+      <button class="nav-btn" data-route="me" type="button"><span>♙</span><small>Me</small></button>
+    </nav>
+  </div>
+
+  <aside id="menuDrawer" class="menu-drawer" aria-hidden="true"></aside>
+  <div id="drawerScrim" class="drawer-scrim hidden" aria-hidden="true"></div>
+  <div id="modalRoot"></div>
+  <div id="toastRoot" class="toast-root" aria-live="assertive"></div>
+
+  <input id="importInput" type="file" accept="application/json" hidden />
+  <input id="csvImportInput" type="file" accept="text/csv,.csv" hidden />
+  <input id="genshinImportInput" type="file" accept="text/csv,.csv" hidden />
+
+  <div id="updateBanner" class="update-banner hidden" role="status" aria-live="polite">
+    <span><b>A Mochi update is available.</b><small>Refresh to update.</small></span>
+    <button id="applyUpdateBtn" type="button">Update</button>
+  </div>
+
+  <!-- Core first, specialized game modules next, Games Hub last so it can safely integrate them. -->
+  <script src="app.js" defer></script>
+  <script src="tomodachi.js" defer></script>
+  <script src="tomodachi-presets.js" defer></script>
+  <script src="genshin.js" defer></script>
+  <script src="games.js" defer></script>
+</body>
+</html>
