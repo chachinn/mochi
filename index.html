@@ -47,19 +47,21 @@
 
   <input id="importInput" type="file" accept="application/json" hidden />
   <input id="csvImportInput" type="file" accept="text/csv,.csv" hidden />
-  <input id="genshinImportInput" type="file" accept="text/csv,.csv" hidden />
+  <input id="genshinImportInput" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,.csv" hidden />
 
   <div id="updateBanner" class="update-banner hidden" role="status" aria-live="polite">
     <span><b>A Mochi update is available.</b><small>Refresh to update.</small></span>
     <button id="applyUpdateBtn" type="button">Update</button>
   </div>
 
-  <!-- Core first, specialized game modules next, Games Hub last, then final runtime guards. -->
+  <!-- SheetJS reads Excel workbooks; specialized modules stay optional by game. -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js" defer></script>
   <script src="app.js" defer></script>
   <script src="tomodachi.js" defer></script>
   <script src="tomodachi-presets.js" defer></script>
   <script src="genshin.js" defer></script>
   <script src="games.js" defer></script>
+  <script src="xlsx-import.js" defer></script>
   <script src="qa-runtime.js" defer></script>
 </body>
 </html>
