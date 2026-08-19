@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'mochi-';
-const CACHE_NAME = 'mochi-internal-build6-v11-game-sort';
+const CACHE_NAME = 'mochi-internal-build6-v12-game-search-fix';
 const EXCEL_LIB_URL = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js';
 const APP_SHELL = [
   './','./index.html','./style.css','./games.css','./game-table-view.css','./tomodachi.css','./tomodachi-presets.css','./genshin.css',
