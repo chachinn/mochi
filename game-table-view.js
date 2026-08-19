@@ -50,9 +50,29 @@ function sortOptions(c){
   return choices;
 }
 
+/* One search controller for BOTH cards and table rows. */
 function applySearch(root){
-  const input=$('#gameEntrySearch'),q=String(input?.value||'').trim().toLowerCase();
-  root.querySelectorAll('[data-game-table-row]').forEach(row=>{row.hidden=!!q&&!String(row.dataset.gameSearch||'').includes(q)});
+  const input=root.querySelector('#gameEntrySearch')||$('#gameEntrySearch');
+  const q=String(input?.value||'').trim().toLowerCase();
+  state.query=q;
+  let cardMatches=0,tableMatches=0;
+  root.querySelectorAll('[data-game-entry]').forEach(card=>{
+    const show=!q||String(card.dataset.gameSearch||'').toLowerCase().includes(q);
+    card.hidden=!show;
+    if(show)cardMatches++;
+  });
+  root.querySelectorAll('[data-game-table-row]').forEach(row=>{
+    const show=!q||String(row.dataset.gameSearch||'').toLowerCase().includes(q);
+    row.hidden=!show;
+    if(show)tableMatches++;
+  });
+  const empty=root.querySelector('#gameSearchEmpty');
+  const mode=root.dataset.gameViewMode==='table'?'table':'cards';
+  const visible=mode==='table'?tableMatches:cardMatches;
+  if(empty){
+    empty.classList.toggle('hidden',!q||visible>0);
+    if(q&&visible===0)empty.textContent=`No matches for “${input.value.trim()}”.`;
+  }
 }
 
 async function setMode(c,mode,root){
@@ -64,6 +84,7 @@ async function setMode(c,mode,root){
   const cards=root.querySelector('.game-entry-list'),table=root.querySelector('.game-table-wrap');
   if(cards)cards.hidden=mode==='table';
   if(table)table.hidden=mode!=='table';
+  applySearch(root);
 }
 
 function reorderCards(root,sorted){
@@ -94,6 +115,7 @@ async function applySort(c,root,key,dir){
   if(select)select.value=`${key}|||${dir}`;
   const badge=root.querySelector('.game-sort-current');
   if(badge)badge.textContent=sortLabel(key,dir,c);
+  applySearch(root);
 }
 
 function buildTable(c,root){
@@ -122,8 +144,13 @@ function buildTable(c,root){
   toolbar.querySelectorAll('[data-game-view]').forEach(btn=>btn.onclick=()=>setMode(c,btn.dataset.gameView,root));
   const sort=toolbar.querySelector('#gameSortSelect');
   if(sort)sort.onchange=()=>{const [key,dir]=sort.value.split('|||');applySort(c,root,key,dir)};
-  const input=$('#gameEntrySearch');
-  if(input)input.addEventListener('input',()=>applySearch(root));
+
+  /* Own the input handler here so search cannot be split between older and newer game UI modules. */
+  const input=root.querySelector('#gameEntrySearch')||$('#gameEntrySearch');
+  if(input){
+    input.oninput=()=>applySearch(root);
+    input.onsearch=()=>applySearch(root);
+  }
 
   setMode(c,c.gameViewMode==='table'?'table':'cards',root);
   applySearch(root);
